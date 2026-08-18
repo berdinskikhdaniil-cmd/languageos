@@ -58,6 +58,12 @@ computed from real rows; a minimal Telegram bot layer — a secret-verified webh
 configure the bot's commands, menu button and webhook; a live production deployment
 on Vercel with its own Neon database, reached through @languageosbot.
 
+The repository is public and licensed AGPL-3.0. There are two ways to use Language OS
+and both must keep working: the official hosted bot, and a self-hosted copy set up from
+`docs/self-hosting.md`. Nothing may assume our Vercel or Neon setup — the app must run
+against any PostgreSQL and any host that can serve Node over HTTPS. Monetisation does
+not exist yet; do not write copy that implies it does.
+
 **Demo content, not functionality** — marked as such in
 `src/features/dashboard/demo-analytics.ts`: the Coach recommendation and the
 Errors / 1000 words trend. Never present either as a working feature. Not built at
@@ -242,8 +248,10 @@ say which you used.
 - Commit only when the prompt asks for it.
 - Never commit secrets. `.env` is ignored; `.env.example` is the template.
 - GitHub `berdinskikhdaniil-cmd/languageos` is the canonical repository, and it is
-  public. Anything committed is published; the private product handoff is ignored
-  and stays off it.
+  public under AGPL-3.0. Anything committed is published; the private product handoff
+  is ignored and stays off it. `README.md`, `docs/self-hosting.md`, `CONTRIBUTING.md`
+  and `SECURITY.md` are read by strangers — keep them accurate, and never describe a
+  planned feature there as if it worked.
 - Pushing `main` deploys production, through Vercel's Git integration with that
   repository. A direct `vercel deploy --prod` is no longer the normal way to ship —
   reach for it only to recover when the integration itself is broken.

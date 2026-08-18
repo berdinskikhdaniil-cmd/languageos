@@ -1,198 +1,165 @@
 # Language OS
 
-A Telegram-first app for people learning a language from real material — YouTube, films,
-podcasts, books, a tutor, conversation — rather than from a course.
+Track how you actually learn a language — across YouTube, podcasts, books, tutors and
+conversation — and turn that activity into practice and measurable progress.
 
-It brings that scattered study into one place and closes the loop:
+Language OS is a Telegram-first, self-hostable language learning tracker. It does not
+try to replace the material you already learn from. It records what you do across all
+of it, and closes the loop:
 
-> study → reproduce → get feedback → fix weak points → see real progress
+> study → reproduce → feedback → fix weak points → see progress
 
-The product is a Telegram Bot for fast capture plus a Telegram Mini App as the main
-interface. This repository is the Mini App.
+## Try the hosted version
 
-## Getting started
+The official bot is [@languageosbot](https://t.me/languageosbot). Send it `/start` and
+open the Mini App.
 
-You need Node 22+ and Docker for the local database.
+The hosted service is the easiest way to use Language OS without running any
+infrastructure. It runs the same code as this repository.
+
+## Available now
+
+- **Telegram Mini App** — a mobile-first interface, designed for the Telegram viewport.
+- **Telegram authentication** — the signed `initData` from a launch is verified on the
+  server, which then issues its own session in an HttpOnly cookie.
+- **Multi-user tracker on PostgreSQL** — every read and write is scoped to the
+  authenticated user.
+- **Timed study sessions** — start, stop or discard. Elapsed time is derived from the
+  stored start timestamp, so it survives a reload, and the final duration is
+  recomputed server-side. One running session per user, enforced by a database index.
+- **Manual entries** — log a session after the fact, with server-side validation.
+- **Activity breakdown** — video, podcast, reading, conversation, writing, speaking and
+  other, grouped into Input, Speaking and Writing.
+- **Daily and weekly totals** — today and this week, with a real previous-week
+  comparison. Day and week boundaries are computed in the user's timezone, not the
+  server's.
+- **Telegram bot** — `/start` and `/help`, a button that opens the Mini App, and a
+  webhook that verifies Telegram's secret header.
+
+Two panels on the dashboard — the coach recommendation and the errors-per-1000-words
+trend — are **placeholder content, not working features**. They are marked as such in
+`src/features/dashboard/demo-analytics.ts`. There is no AI in this codebase yet.
+
+## Planned
+
+- Writing practice with AI feedback
+- Speaking practice
+- A mistake engine that turns corrections into targeted drills
+- Vocabulary and spaced repetition
+- Progress history, including a then-versus-now comparison
+- Onboarding, and support for more than one language per user
+
+No dates are promised for any of these.
+
+## How it works
+
+```
+Telegram client
+  → Mini App (Next.js)
+      → PostgreSQL
+
+Telegram Bot API
+  → webhook (Next.js)
+      → Telegram Bot API
+```
+
+Authentication in one line:
+
+```
+Telegram initData → server-side signature check → internal user → session in an HttpOnly cookie
+```
+
+Telegram identity stays behind that boundary. Feature code only ever sees an internal
+user id, and the app never trusts a client-supplied user, session or language id.
+
+## Quick start
+
+You need Node.js 22 or newer, and Docker for the local database.
 
 ```bash
-npm install
-cp .env.example .env     # adjust POSTGRES_PORT if 5442 is taken on your machine
-npm run db:up            # start PostgreSQL in Docker and wait for it
-npm run db:migrate       # apply migrations
+git clone https://github.com/berdinskikhdaniil-cmd/languageos.git
+cd languageos
+npm ci
+cp .env.example .env
+npm run db:up          # start PostgreSQL in Docker
+npm run db:migrate     # apply migrations
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open <http://localhost:3000>.
 
-`.env.example` ships with `ALLOW_DEV_AUTH="true"`, which lets localhost run as a
-local development user without Telegram. The first request creates that user with
-English as its language, so the tracker works immediately with an empty history.
+`.env.example` ships with `ALLOW_DEV_AUTH="true"`, which lets localhost run as a local
+development user so you can use the tracker without Telegram. It requires a
+non-production `NODE_ENV` as well, so it cannot be switched on in production.
 
-The bypass needs an explicit `ALLOW_DEV_AUTH="true"` **and** a non-production
-`NODE_ENV`; it cannot be switched on in production. With it off and no Telegram
-session, the app says "Open Language OS from Telegram to continue" rather than
-showing anyone's data.
+Running it for real — with a Telegram bot, a public HTTPS URL and your own database —
+is covered in the **[self-hosting guide](docs/self-hosting.md)**.
 
-Optionally, `npm run db:seed` writes example sessions across this week and last
-week. It is never run automatically.
-
-### Running inside Telegram
-
-Set `TELEGRAM_BOT_TOKEN` from @BotFather and point that bot's Mini App at a
-public HTTPS URL for this app (a tunnel is fine in development). On launch the
-client posts Telegram's signed `initData` once to `/api/auth/telegram`; the
-server verifies it, finds or creates the user, and sets an HttpOnly session
-cookie. Nothing after that sends initData again.
-
-### Production
-
-Two databases, never the same one. Local development runs the Docker Postgres from
-`docker-compose.yml`; production runs on Neon and is reached only through the
-deployed app. `db:seed` and `db:reset` refuse to run unless `DATABASE_URL` points
-at this machine, so a stray shell cannot destroy real data.
-
-Pushing `main` deploys: GitHub triggers the Vercel production build, and that build
-applies migrations before it compiles.
-
-```json
-// vercel.json
-"buildCommand": "npm run db:migrate:deploy && npm run build"
-```
-
-`db:migrate:deploy` runs the same script as `npm run db:migrate`, so there is one
-migration path, not two. It applies only what Drizzle has not recorded yet, so
-re-deploying changes nothing; it refuses to run on anything but a production
-deployment, so previews never reach the production database; and if it fails, the
-build fails and the previous deployment keeps serving.
-
-Production environment variables live in Vercel, not in any file here:
-`DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
-`TELEGRAM_WEBAPP_URL`, `TELEGRAM_INIT_DATA_MAX_AGE_SECONDS`,
-`AUTH_SESSION_TTL_SECONDS`, `DEFAULT_TIMEZONE`. `ALLOW_DEV_AUTH` is deliberately
-absent — and could not work there anyway, since it also requires a non-production
-`NODE_ENV`.
-
-After a deployment URL changes, point the bot at it with `npm run telegram:configure`.
-
-### The Telegram bot
-
-Two explicit scripts; neither runs during `npm run dev` or a build.
+## Development
 
 ```bash
-npm run telegram:check      # verify TELEGRAM_BOT_TOKEN via getMe, report what is configured
-npm run telegram:configure  # apply the command list, menu button and webhook
+npm run dev        # development server
+npm run build      # production build (does not need a database)
+npm run start      # serve the production build
+npm test           # unit tests — no database, no network
+npm run test:db    # integration tests — needs `npm run db:up`
+npm run lint       # ESLint
+npm run typecheck  # tsc --noEmit
 ```
 
-They need `TELEGRAM_BOT_TOKEN`, and for anything beyond the command list also
-`TELEGRAM_WEBAPP_URL` (this app's own public URL) and `TELEGRAM_WEBHOOK_SECRET`.
-
-`telegram:configure` is idempotent — each call overwrites, so running it twice
-leaves the same state. It sets `/start` and `/help`, points the chat menu button
-at the Mini App, and registers `POST /api/telegram/webhook` (the Mini App URL with
-that path appended) together with the secret. Telegram echoes the secret in the
-`X-Telegram-Bot-Api-Secret-Token` header, and the route refuses anything else.
-
-A localhost `TELEGRAM_WEBAPP_URL` is fine for development, but Telegram cannot
-open or call it: the menu button and the webhook are skipped with a reason until
-the app is deployed behind a public HTTPS URL.
-
-The bot itself is only a door. `/start` replies with one line and an "Open
-Language OS" Web App button, `/help` says the same in fewer words, and everything
-else — ordinary text, voice, group chats — is left alone. It never signs anyone
-in: the Mini App's `initData` flow below is the only path to a session.
-
-### Database commands
+Database commands:
 
 ```bash
-npm run db:up        # start the container
-npm run db:down      # stop it (data is kept in a volume)
+npm run db:up        # start the local container
+npm run db:down      # stop it, keeping the volume
 npm run db:reset     # destroy the volume, recreate, migrate
 npm run db:generate  # generate a migration after editing src/db/schema.ts
 npm run db:migrate   # apply pending migrations
 npm run db:studio    # browse the data
-npm run db:seed      # example development sessions
+npm run db:seed      # example sessions for the development user
 ```
 
-### Checks
-
-```bash
-npm run lint       # ESLint
-npm run typecheck  # tsc --noEmit
-npm test           # unit tests — no database, no network
-npm run test:db    # integration tests — needs `npm run db:up`
-npm run build      # production build (does not need a database)
-```
+`db:seed` and `db:reset` refuse to run unless `DATABASE_URL` points at a database on
+your own machine.
 
 ## Stack
 
-- Next.js 16 (App Router) + React 19
-- TypeScript
+- Next.js 16 (App Router) and React 19, TypeScript
 - Tailwind CSS 4, with design tokens as CSS variables in `src/app/globals.css`
-- Manrope as the single UI typeface, via `next/font`
-- PostgreSQL 18 + Drizzle ORM, migrations in `drizzle/`
-- Telegram Mini App authentication with our own opaque server sessions
-- Vitest for the domain logic
-- Lucide for icons
-- No UI framework and no AI provider yet
-
-## What works today
-
-**Telegram is the login.** Launching the Mini App verifies Telegram's signed
-`initData` on the server, finds or creates a real user, and issues one of our own
-sessions. Every feature then works from our internal user id and knows nothing
-about Telegram.
-
-**The tracker is real.** Time you log is stored in PostgreSQL and the dashboard
-reads it back.
-
-- **Start a session** — pick an activity in a bottom sheet, a timer starts. Elapsed
-  time is derived from the stored `startedAt`, so it stays correct across a refresh
-  or a route change. One running session per user, enforced by a partial unique index.
-- **Stop** — the duration is recomputed from the timestamps server-side.
-- **Add manually** — activity, duration, day and optional notes, validated on the
-  server with errors shown inline.
-- **Dashboard** — "This week" (with a real previous-week comparison, or an honest
-  "nothing to compare with") and "Today" broken into Input / Speaking / Writing are
-  queried from the database. Day and week boundaries are computed in the user's
-  timezone, not the server's.
-
-Still demo content, marked as such in `src/features/dashboard/demo-analytics.ts`:
-the coach recommendation and the errors-per-1000-words trend.
-
-**The bot is a transport.** A secret-verified webhook, `/start`, `/help` and a
-button into the Mini App, plus the scripts that configure them.
-
-Not built yet: logging time by message or voice, reminders, AI review,
-speech-to-text, vocabulary and SRS, onboarding, and the progress engine.
+- PostgreSQL with Drizzle ORM; migrations in `drizzle/`
+- Vitest, in two suites
+- No UI framework, and no AI provider yet
 
 ## Layout
 
 ```
 src/
-  app/          routes, root layout, design tokens
-  components/
-    layout/     app shell, header, bottom nav, Telegram viewport
-    ui/         small shared primitives (card, bottom sheet, sparkline, …)
-  db/           Drizzle schema and the connection pool
-  components/auth/  sign-in bootstrap and pre-authentication screens
-  features/
-    dashboard/  dashboard presentation and clearly-labelled demo content
-    tracker/    domain rules, data access, server actions, tracker UI
+  app/                routes, root layout, design tokens, API routes
+  components/         auth screens, layout shell, shared UI primitives
+  db/                 Drizzle schema, connection pool, environment rules
+  features/<name>/    domain/ (pure rules) · data/ (queries) · actions.ts · components/
   lib/
-    auth/       identity, sessions, environment gating
-    telegram/   the WebApp bridge, the initData validator, the Bot API client
-                and the update handler
-    …           time zones, formatting, navigation
-drizzle/        generated migrations
-scripts/        explicit scripts (seed, Telegram setup)
-docs/           design rules
+    auth/             identity, sessions, environment gating
+    telegram/         Mini App bridge, initData validator, Bot API client, update handler
+    …                 time zones, formatting, navigation
+drizzle/              generated migrations
+scripts/              explicit scripts (migrations, seed, Telegram setup)
+docs/                 design rules, self-hosting guide
 ```
 
-## Before changing the UI
+## Contributing
 
-[docs/design-system.md](docs/design-system.md) holds the binding visual rules —
-typeface, accent, labels, badges, cards, icons. They outrank whatever a given
-component happens to do today.
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). UI changes must
+follow [docs/design-system.md](docs/design-system.md), which is binding.
 
-The product context and the longer-term plan live in a handoff document kept
-outside this repository.
+## Security
+
+Please do not report vulnerabilities through public issues. See
+[SECURITY.md](SECURITY.md).
+
+## License
+
+[GNU Affero General Public License v3.0](LICENSE).
+
+If you run a modified version of Language OS as a network service, the AGPL requires
+you to offer its source to the people who use it.
