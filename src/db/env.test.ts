@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assertDevelopmentDatabase, classifyDatabaseUrl } from "./env";
+import {
+  assertDevelopmentDatabase,
+  classifyDatabaseUrl,
+  shouldRunDeploymentMigration,
+} from "./env";
 
 const LOCAL_URL = "postgresql://language_os:language_os@127.0.0.1:5442/language_os";
 const REMOTE_URL = "postgresql://user:pw@ep-x-pooler.eu-central-1.aws.neon.tech/language_os?sslmode=verify-full";
@@ -53,5 +57,37 @@ describe("assertDevelopmentDatabase", () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("DATABASE_URL", REMOTE_URL);
     expect(() => assertDevelopmentDatabase("db:reset")).toThrow(/db:reset/);
+  });
+});
+
+describe("shouldRunDeploymentMigration", () => {
+  it("migrates on a Vercel production deployment", () => {
+    expect(shouldRunDeploymentMigration({ onVercel: true, vercelEnv: "production" })).toEqual({
+      run: true,
+    });
+  });
+
+  it("never migrates from a preview deployment, whatever branch it came from", () => {
+    const decision = shouldRunDeploymentMigration({ onVercel: true, vercelEnv: "preview" });
+    expect(decision.run).toBe(false);
+    expect(decision).toHaveProperty("reason", expect.stringContaining("preview"));
+  });
+
+  it("never migrates from Vercel's development environment", () => {
+    expect(shouldRunDeploymentMigration({ onVercel: true, vercelEnv: "development" }).run).toBe(false);
+  });
+
+  it("never migrates when Vercel reports no environment at all", () => {
+    expect(shouldRunDeploymentMigration({ onVercel: true, vercelEnv: undefined }).run).toBe(false);
+  });
+
+  it("runs off Vercel, where the operator chose the target themselves", () => {
+    expect(shouldRunDeploymentMigration({ onVercel: false, vercelEnv: undefined })).toEqual({
+      run: true,
+    });
+  });
+
+  it("ignores VERCEL_ENV when not running on Vercel", () => {
+    expect(shouldRunDeploymentMigration({ onVercel: false, vercelEnv: "preview" }).run).toBe(true);
   });
 });

@@ -97,6 +97,21 @@ except to apply a migration on purpose.
 that is safe on top of existing data. Prefer a PostgreSQL constraint over hopeful
 application code for anything important, and never delete existing data unless asked.
 
+**Schema changes ship additively first.** Production migrations run in the
+deployment build, so for a moment the new schema is live under the old code — and a
+Vercel rollback puts the old code back under the new schema for good. A migration
+must therefore leave the previous deployment working. Expand, then contract:
+
+1. an additive, backward-compatible migration (add the column, nullable or
+   defaulted; add the table; add the index);
+2. the code that uses it, in a later commit;
+3. the destructive half — dropping or renaming — only once no deployment anyone
+   might roll back to still reads it.
+
+A rename is an add, a backfill, a code switch and a drop, spread across
+iterations; never one migration. Dropping a column, dropping a table or deleting
+rows needs explicit agreement from the user first — say what will be lost and wait.
+
 **Time.** Timezone arithmetic lives in `src/lib/time.ts` and nowhere else — the
 server's timezone is not the user's. Pass `now` in rather than scattering
 `new Date()` boundaries through feature code; that is also what keeps rules testable.
@@ -210,6 +225,8 @@ npm run build      # does not require a database
 ```
 
 `npm run test:db` is required whenever persistence, auth or data isolation is touched.
+After pushing a schema change, read the deployment: the build log must show the
+migration step succeeding, and the app must still answer afterwards.
 For UI changes also verify at runtime in a browser when the environment allows, at the
 widths in §8.
 
@@ -230,14 +247,19 @@ say which you used.
 - Pushing `main` deploys production, through Vercel's Git integration with that
   repository. A direct `vercel deploy --prod` is no longer the normal way to ship —
   reach for it only to recover when the integration itself is broken.
+- Production migrations are part of that build: `vercel.json` runs
+  `npm run db:migrate:deploy` before `next build`, so a migration that fails fails
+  the build and the previous deployment keeps serving. Nothing is applied by hand,
+  and preview deployments never touch the production database.
 - Never run `vercel env pull` here without an explicit destination: it overwrites
   local development env with production credentials.
 
 ## 14. Known limitations
 
 - Production is one Vercel project and one Neon database, with no staging
-  environment between them: `main` deploys straight to production, and the
-  production migration is still run by hand.
+  environment between them: `main` deploys straight to production, migrations
+  included. Two production builds racing would both try to migrate; one would fail
+  and take its deployment with it.
 - Every Mini App launch mints a new auth session row; nothing reuses or prunes them
   yet (see the session-lifecycle limitation below).
 - The bot is a door, not a feature surface: no logging by message, no voice, no

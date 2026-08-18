@@ -65,3 +65,39 @@ export function assertDevelopmentDatabase(operation: string): void {
     );
   }
 }
+
+/**
+ * Whether a deployment build should apply migrations to its database.
+ *
+ * The decision is made from Vercel's own environment indicators rather than a
+ * branch name: `VERCEL_ENV` is what Vercel guarantees, and a preview built from
+ * any branch must never touch the production database.
+ *
+ * Pure and inspectable, so the rule is testable without a build.
+ */
+export type DeploymentEnvironment = {
+  /** Vercel sets VERCEL="1" in every build and function it runs. */
+  onVercel: boolean;
+  /** "production" | "preview" | "development", absent off Vercel. */
+  vercelEnv: string | undefined;
+};
+
+export type MigrationDecision = { run: true } | { run: false; reason: string };
+
+export function shouldRunDeploymentMigration(env: DeploymentEnvironment): MigrationDecision {
+  if (!env.onVercel) {
+    // Run by hand, against whatever DATABASE_URL the operator supplied.
+    return { run: true };
+  }
+
+  if (env.vercelEnv === "production") return { run: true };
+
+  return {
+    run: false,
+    reason: `this is a ${env.vercelEnv ?? "non-production"} deployment; only a production deployment migrates the production database`,
+  };
+}
+
+export function readDeploymentEnvironment(): DeploymentEnvironment {
+  return { onVercel: process.env.VERCEL === "1", vercelEnv: process.env.VERCEL_ENV };
+}

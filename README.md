@@ -51,16 +51,19 @@ Two databases, never the same one. Local development runs the Docker Postgres fr
 deployed app. `db:seed` and `db:reset` refuse to run unless `DATABASE_URL` points
 at this machine, so a stray shell cannot destroy real data.
 
-```bash
-# Deploy (Vercel CLI, already linked to the project)
-vercel deploy --prod
+Pushing `main` deploys: GitHub triggers the Vercel production build, and that build
+applies migrations before it compiles.
 
-# Apply migrations to production — explicit, never part of a build
-DATABASE_URL="<neon direct url>" npm run db:migrate
+```json
+// vercel.json
+"buildCommand": "npm run db:migrate:deploy && npm run build"
 ```
 
-Migrations use Neon's direct endpoint; the app runs against the pooled one, with a
-small per-instance pool because serverless multiplies pools across instances.
+`db:migrate:deploy` runs the same script as `npm run db:migrate`, so there is one
+migration path, not two. It applies only what Drizzle has not recorded yet, so
+re-deploying changes nothing; it refuses to run on anything but a production
+deployment, so previews never reach the production database; and if it fails, the
+build fails and the previous deployment keeps serving.
 
 Production environment variables live in Vercel, not in any file here:
 `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
