@@ -22,12 +22,27 @@ npm run db:migrate       # apply migrations
 npm run dev
 ```
 
-Open http://localhost:3000. It runs in a normal browser as well as inside Telegram.
-The first request creates a development user with English as its language, so the
-tracker works immediately with an empty history.
+Open http://localhost:3000.
+
+`.env.example` ships with `ALLOW_DEV_AUTH="true"`, which lets localhost run as a
+local development user without Telegram. The first request creates that user with
+English as its language, so the tracker works immediately with an empty history.
+
+The bypass needs an explicit `ALLOW_DEV_AUTH="true"` **and** a non-production
+`NODE_ENV`; it cannot be switched on in production. With it off and no Telegram
+session, the app says "Open Language OS from Telegram to continue" rather than
+showing anyone's data.
 
 Optionally, `npm run db:seed` writes example sessions across this week and last
 week. It is never run automatically.
+
+### Running inside Telegram
+
+Set `TELEGRAM_BOT_TOKEN` from @BotFather and point that bot's Mini App at a
+public HTTPS URL for this app (a tunnel is fine in development). On launch the
+client posts Telegram's signed `initData` once to `/api/auth/telegram`; the
+server verifies it, finds or creates the user, and sets an HttpOnly session
+cookie. Nothing after that sends initData again.
 
 ### Database commands
 
@@ -46,7 +61,8 @@ npm run db:seed      # example development sessions
 ```bash
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
-npm test           # Vitest
+npm test           # unit tests — no database, no network
+npm run test:db    # integration tests — needs `npm run db:up`
 npm run build      # production build (does not need a database)
 ```
 
@@ -57,11 +73,17 @@ npm run build      # production build (does not need a database)
 - Tailwind CSS 4, with design tokens as CSS variables in `src/app/globals.css`
 - Manrope as the single UI typeface, via `next/font`
 - PostgreSQL 18 + Drizzle ORM, migrations in `drizzle/`
+- Telegram Mini App authentication with our own opaque server sessions
 - Vitest for the domain logic
 - Lucide for icons
 - No UI framework and no AI provider yet
 
 ## What works today
+
+**Telegram is the login.** Launching the Mini App verifies Telegram's signed
+`initData` on the server, finds or creates a real user, and issues one of our own
+sessions. Every feature then works from our internal user id and knows nothing
+about Telegram.
 
 **The tracker is real.** Time you log is stored in PostgreSQL and the dashboard
 reads it back.
@@ -80,8 +102,8 @@ reads it back.
 Still demo content, marked as such in `src/features/dashboard/demo-analytics.ts`:
 the coach recommendation and the errors-per-1000-words trend.
 
-Not built yet: Telegram authentication and the bot, AI review, speech-to-text,
-vocabulary and SRS, and the progress engine.
+Not built yet: the Telegram bot itself (commands, `/start`, webhooks), AI review,
+speech-to-text, vocabulary and SRS, onboarding, and the progress engine.
 
 ## Layout
 
@@ -92,10 +114,14 @@ src/
     layout/     app shell, header, bottom nav, Telegram viewport
     ui/         small shared primitives (card, bottom sheet, sparkline, …)
   db/           Drizzle schema and the connection pool
+  components/auth/  sign-in bootstrap and pre-authentication screens
   features/
     dashboard/  dashboard presentation and clearly-labelled demo content
     tracker/    domain rules, data access, server actions, tracker UI
-  lib/          time zones, formatting, navigation, identity, Telegram types
+  lib/
+    auth/       identity, sessions, environment gating
+    telegram/   the WebApp bridge adapter and the initData validator
+    …           time zones, formatting, navigation
 drizzle/        generated migrations
 scripts/        one-off development scripts (seed)
 docs/           product handoff, design rules

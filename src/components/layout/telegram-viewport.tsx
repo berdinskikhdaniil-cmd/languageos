@@ -1,44 +1,51 @@
 "use client";
 
 import { useEffect } from "react";
-
-// `window.Telegram` is typed by the global augmentation in @/lib/telegram/types.
-
-const VIEWPORT_EVENTS = ["viewportChanged", "safeAreaChanged", "contentSafeAreaChanged"];
+import {
+  getTelegramWebApp,
+  notifyReady,
+  readViewportMetrics,
+  requestExpand,
+  subscribeToViewport,
+} from "@/lib/telegram/web-app";
 
 /**
- * Feeds Telegram's viewport and safe-area values into the CSS variables the
- * shell lays out against. Outside Telegram it does nothing, and the `env()`
- * fallbacks in globals.css keep the layout correct in a plain browser.
+ * Wires the Telegram viewport into the CSS variables the shell lays out against,
+ * and tells Telegram we are ready.
  *
- * The `telegram-web-app.js` script that defines `window.Telegram` is added
- * alongside authentication in a later iteration.
+ * Recent Telegram clients publish `--tg-safe-area-inset-*` and friends
+ * themselves, and globals.css already prefers them. This component covers the
+ * clients that expose the JavaScript API but not the CSS variables, and keeps
+ * the values current as the viewport changes. Outside Telegram it does nothing
+ * and the `env()` fallbacks in globals.css apply.
  */
 export function TelegramViewport() {
   useEffect(() => {
-    const webApp = window.Telegram?.WebApp;
-    if (!webApp) return;
+    if (!getTelegramWebApp()) return;
 
-    webApp.ready();
-    webApp.expand();
+    // The interface is painted by the time an effect runs, which is when
+    // Telegram wants to be told it can drop its own loading placeholder.
+    notifyReady();
+    requestExpand();
 
     const sync = () => {
-      const root = document.documentElement;
-      const top = webApp.contentSafeAreaInset?.top ?? webApp.safeAreaInset?.top;
-      const bottom = webApp.safeAreaInset?.bottom;
+      const metrics = readViewportMetrics();
+      if (!metrics) return;
 
-      if (typeof top === "number") root.style.setProperty("--safe-top", `${top}px`);
-      if (typeof bottom === "number") root.style.setProperty("--safe-bottom", `${bottom}px`);
-      if (webApp.viewportStableHeight) {
-        root.style.setProperty("--app-height", `${webApp.viewportStableHeight}px`);
-      }
+      const root = document.documentElement;
+      const set = (name: string, value: number | null | undefined) => {
+        if (typeof value === "number") root.style.setProperty(name, `${value}px`);
+      };
+
+      set("--tg-safe-area-inset-top", metrics.safeArea?.top);
+      set("--tg-safe-area-inset-bottom", metrics.safeArea?.bottom);
+      set("--tg-content-safe-area-inset-top", metrics.contentSafeArea?.top);
+      set("--tg-content-safe-area-inset-bottom", metrics.contentSafeArea?.bottom);
+      set("--tg-viewport-stable-height", metrics.stableHeight);
     };
 
     sync();
-    for (const event of VIEWPORT_EVENTS) webApp.onEvent(event, sync);
-    return () => {
-      for (const event of VIEWPORT_EVENTS) webApp.offEvent(event, sync);
-    };
+    return subscribeToViewport(sync);
   }, []);
 
   return null;

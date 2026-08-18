@@ -17,10 +17,21 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   let overview: TrackerOverview | null = null;
 
+  /**
+   * Authorization is not delegated to the layout.
+   *
+   * React renders a page even when its layout chooses not to place `children`,
+   * so a layout gate is a presentation decision, not a security boundary. The
+   * boundary is here and in the data layer: without a user there is no query and
+   * nothing to render.
+   */
   try {
     const user = await getCurrentUser();
+    if (!user) return null;
     overview = await getTrackerOverview(user);
   } catch (error) {
+    // Identity or the tracker could not be read — almost always a database that
+    // is not running. Say so rather than reporting zeroes.
     console.error("[dashboard] tracker unavailable", error);
   }
 

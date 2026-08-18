@@ -9,7 +9,8 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { sessions } from "@/db/schema";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { ensureDevelopmentUser } from "@/lib/auth/current-user";
+import { ensurePrimaryLanguage } from "@/lib/auth/telegram-login";
 import { addLocalDays, startOfLocalWeek } from "@/lib/time";
 import type { ActivityType } from "@/features/tracker/domain/activity";
 
@@ -34,7 +35,16 @@ const LAST_WEEK: Plan[] = [
 ];
 
 async function main() {
-  const user = await getCurrentUser();
+  // getCurrentUser() reads cookies and only works inside a request, so the seed
+  // addresses the development identity directly.
+  const account = await ensureDevelopmentUser();
+  const language = await ensurePrimaryLanguage(account.id);
+  const user = {
+    id: account.id,
+    timeZone: account.timezone,
+    primaryLanguage: { id: language.id, name: language.languageName },
+  };
+
   const now = new Date();
   const weekStart = startOfLocalWeek(now, user.timeZone);
   const lastWeekStart = addLocalDays(weekStart, -7, user.timeZone);

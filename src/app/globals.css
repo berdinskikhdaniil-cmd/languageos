@@ -46,12 +46,31 @@
   --radius-tile: 16px;
   --radius-control: 14px;
 
-  /* Shell — safe-area values are overwritten at runtime by TelegramViewport
-     when the app is opened inside Telegram. */
+  /* Shell */
   --app-width: 30rem;
   --nav-height: 3.5rem;
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /*
+   * Safe areas, resolved for three environments at once and with no
+   * device-specific numbers anywhere.
+   *
+   * Telegram 8.0+ publishes --tg-safe-area-inset-* (the device notch and home
+   * indicator) and --tg-content-safe-area-inset-* (Telegram's own header, which
+   * sits *inside* the device safe area, so the two add up). On clients that
+   * expose only the JavaScript API, TelegramViewport writes the same variables.
+   * In a plain browser none of them exist and env() answers instead.
+   */
+  --safe-top: calc(
+    max(env(safe-area-inset-top, 0px), var(--tg-safe-area-inset-top, 0px)) +
+      var(--tg-content-safe-area-inset-top, 0px)
+  );
+  --safe-bottom: calc(
+    max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px)) +
+      var(--tg-content-safe-area-inset-bottom, 0px)
+  );
+
+  /* Telegram's stable viewport height, or the browser's dynamic viewport. */
+  --app-height: var(--tg-viewport-stable-height, 100dvh);
 }
 
 @theme inline {

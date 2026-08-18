@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
+import Script from "next/script";
+import { AuthBootstrap } from "@/components/auth/auth-bootstrap";
 import { AppShell } from "@/components/layout/app-shell";
 import { TelegramViewport } from "@/components/layout/telegram-viewport";
+import { getCurrentUser, type CurrentUser } from "@/lib/auth/current-user";
 import "./globals.css";
 
 /** The only typeface in the product. See docs/design-system.md. */
@@ -31,12 +34,45 @@ export const viewport: Viewport = {
   interactiveWidget: "resizes-content",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  /**
+   * Every route is behind authentication, so the gate lives here.
+   *
+   * Three outcomes, kept distinct on purpose. A signed-in user gets the app. No
+   * session means the bootstrap screen — never somebody else's data. And if
+   * identity itself could not be resolved (the database is unreachable) we do
+   * *not* claim the visitor is signed out; the app renders and each screen
+   * reports its own unavailability.
+   */
+  let user: CurrentUser | null = null;
+  let identityUnavailable = false;
+
+  try {
+    user = await getCurrentUser();
+  } catch (error) {
+    identityUnavailable = true;
+    console.error("[auth] could not resolve identity", error);
+  }
+
+  const showApp = user !== null || identityUnavailable;
+
   return (
     <html lang="en" className={manrope.variable}>
+      <head>
+        {/*
+          Telegram's own bridge, which is what defines `window.Telegram.WebApp`.
+          It must run before hydration, because the auth bootstrap reads initData
+          in its first effect. Outside Telegram the script still loads but reports
+          an empty initData, which is exactly how we detect "not a Mini App".
+        */}
+        <Script
+          src="https://telegram.org/js/telegram-web-app.js?57"
+          strategy="beforeInteractive"
+        />
+      </head>
       <body>
         <TelegramViewport />
-        <AppShell>{children}</AppShell>
+        {showApp ? <AppShell user={user}>{children}</AppShell> : <AuthBootstrap />}
       </body>
     </html>
   );

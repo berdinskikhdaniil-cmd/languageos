@@ -21,12 +21,30 @@ import {
 
 export type ActionResult = { ok: true } | { ok: false; error: string; field?: string };
 
+const SIGNED_OUT = "Your session has expired. Reopen the app from Telegram.";
+
+/**
+ * Resolves the caller, or throws so the surrounding handler reports a failure.
+ * Every mutation below runs against this user's own id — none of them accepts an
+ * id, a session id or a language id from the client.
+ */
+class SignedOutError extends Error {}
+
+async function requireUser() {
+  const user = await getCurrentUser();
+  if (!user) throw new SignedOutError(SIGNED_OUT);
+  return user;
+}
+
 /**
  * TrackerError messages are written for the learner. Anything else is a real
  * fault (database down, bad connection string) and gets a generic message plus
  * a server-side log.
  */
 function toResult(error: unknown, fallback: string): ActionResult {
+  if (error instanceof SignedOutError) {
+    return { ok: false, error: SIGNED_OUT };
+  }
   if (error instanceof TrackerError) {
     return { ok: false, error: error.message };
   }
@@ -40,7 +58,7 @@ export async function startSessionAction(activityType: string): Promise<ActionRe
   }
 
   try {
-    const user = await getCurrentUser();
+    const user = await requireUser();
     await startSession({
       userId: user.id,
       userLanguageId: user.primaryLanguage.id,
@@ -57,7 +75,7 @@ export async function startSessionAction(activityType: string): Promise<ActionRe
 
 export async function stopSessionAction(): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
+    const user = await requireUser();
     await stopSession({ userId: user.id, endedAt: new Date() });
   } catch (error) {
     return toResult(error, "Could not stop the session. Try again.");
@@ -69,7 +87,7 @@ export async function stopSessionAction(): Promise<ActionResult> {
 
 export async function cancelSessionAction(): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
+    const user = await requireUser();
     await cancelSession({ userId: user.id });
   } catch (error) {
     return toResult(error, "Could not discard the session. Try again.");
@@ -86,7 +104,7 @@ export async function addManualSessionAction(formData: FormData): Promise<Action
   };
 
   try {
-    const user = await getCurrentUser();
+    const user = await requireUser();
     const now = new Date();
 
     const parsed = validateManualEntry(
