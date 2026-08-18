@@ -42,3 +42,8 @@ next-env.d.ts
 
 # ...but the template must be committed
 !.env.example
+
+# Private product handoff. Kept on the machine, never in this repository:
+# the repo is public and this is unreleased product strategy. docs/design-system.md
+# is deliberately NOT ignored — it is binding and meant to be public.
+docs/handoff-language-os-conductor.md

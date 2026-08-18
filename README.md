@@ -182,7 +182,7 @@ src/
     …           time zones, formatting, navigation
 drizzle/        generated migrations
 scripts/        explicit scripts (seed, Telegram setup)
-docs/           product handoff, design rules
+docs/           design rules
 ```
 
 ## Before changing the UI
@@ -191,5 +191,5 @@ docs/           product handoff, design rules
 typeface, accent, labels, badges, cards, icons. They outrank whatever a given
 component happens to do today.
 
-Product context and the longer-term plan live in
-a handoff document kept outside this repository.
+The product context and the longer-term plan live in a handoff document kept
+outside this repository.
