@@ -9,11 +9,21 @@ import * as schema from "./schema";
  */
 const globalForDb = globalThis as unknown as { languageOsPool?: Pool };
 
+/**
+ * Serverless runs many short-lived instances, each with a pool of its own, and
+ * one instance serves only a handful of concurrent requests. A large per-
+ * instance pool therefore buys nothing and multiplies straight into the
+ * provider's connection limit, so production keeps it small and leans on the
+ * provider's own pooler in front of Postgres. A single local dev process can
+ * afford more.
+ */
+const MAX_POOL_CLIENTS = process.env.NODE_ENV === "production" ? 4 : 10;
+
 const pool =
   globalForDb.languageOsPool ??
   new Pool({
     connectionString: databaseUrl(),
-    max: 10,
+    max: MAX_POOL_CLIENTS,
     // Fail fast with a clear error instead of hanging a request forever.
     connectionTimeoutMillis: 5_000,
   });

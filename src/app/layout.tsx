@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
+import { unstable_rethrow } from "next/navigation";
 import Script from "next/script";
 import { AuthBootstrap } from "@/components/auth/auth-bootstrap";
 import { AppShell } from "@/components/layout/app-shell";
@@ -50,6 +51,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   try {
     user = await getCurrentUser();
   } catch (error) {
+    // `cookies()` throws a control-flow error to tell Next.js this render is
+    // dynamic. Swallowing it would hide that signal and let the shell be
+    // treated as prerenderable, so it goes back to the framework untouched;
+    // only a genuine infrastructure failure reaches the line below.
+    unstable_rethrow(error);
     identityUnavailable = true;
     console.error("[auth] could not resolve identity", error);
   }

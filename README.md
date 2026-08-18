@@ -44,6 +44,33 @@ client posts Telegram's signed `initData` once to `/api/auth/telegram`; the
 server verifies it, finds or creates the user, and sets an HttpOnly session
 cookie. Nothing after that sends initData again.
 
+### Production
+
+Two databases, never the same one. Local development runs the Docker Postgres from
+`docker-compose.yml`; production runs on Neon and is reached only through the
+deployed app. `db:seed` and `db:reset` refuse to run unless `DATABASE_URL` points
+at this machine, so a stray shell cannot destroy real data.
+
+```bash
+# Deploy (Vercel CLI, already linked to the project)
+vercel deploy --prod
+
+# Apply migrations to production — explicit, never part of a build
+DATABASE_URL="<neon direct url>" npm run db:migrate
+```
+
+Migrations use Neon's direct endpoint; the app runs against the pooled one, with a
+small per-instance pool because serverless multiplies pools across instances.
+
+Production environment variables live in Vercel, not in any file here:
+`DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
+`TELEGRAM_WEBAPP_URL`, `TELEGRAM_INIT_DATA_MAX_AGE_SECONDS`,
+`AUTH_SESSION_TTL_SECONDS`, `DEFAULT_TIMEZONE`. `ALLOW_DEV_AUTH` is deliberately
+absent — and could not work there anyway, since it also requires a non-production
+`NODE_ENV`.
+
+After a deployment URL changes, point the bot at it with `npm run telegram:configure`.
+
 ### The Telegram bot
 
 Two explicit scripts; neither runs during `npm run dev` or a build.

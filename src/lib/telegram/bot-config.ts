@@ -9,6 +9,7 @@
  */
 
 import { isProduction } from "@/lib/auth/config";
+import { isLocalHostname } from "@/lib/host";
 
 /** Where this app receives updates. Appended to the Mini App origin. */
 export const TELEGRAM_WEBHOOK_PATH = "/api/telegram/webhook";
@@ -18,8 +19,6 @@ export const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
 
 /** Telegram's own rule for `secret_token`: 1–256 chars of A-Z a-z 0-9 _ - */
 const WEBHOOK_SECRET_PATTERN = /^[A-Za-z0-9_-]{1,256}$/;
-
-const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "::1"]);
 
 export type WebAppUrlProblem =
   | "missing"
@@ -71,7 +70,7 @@ export function parseWebAppUrl(raw: string | null | undefined, production: boole
     return { ok: false, problem: "unsupported_scheme" };
   }
 
-  const isLocal = LOCAL_HOSTNAMES.has(parsed.hostname);
+  const isLocal = isLocalHostname(parsed.hostname);
   const isSecure = parsed.protocol === "https:";
 
   // Plain http is only ever tolerable against the developer's own machine.

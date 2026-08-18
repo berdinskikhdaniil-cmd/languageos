@@ -8,6 +8,7 @@
  */
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
+import { assertDevelopmentDatabase } from "@/db/env";
 import { sessions } from "@/db/schema";
 import { ensureDevelopmentUser } from "@/lib/auth/current-user";
 import { ensurePrimaryLanguage } from "@/lib/auth/telegram-login";
@@ -35,6 +36,10 @@ const LAST_WEEK: Plan[] = [
 ];
 
 async function main() {
+  // This deletes the development user's sessions before writing new ones, so
+  // it must never see anything but the local database.
+  assertDevelopmentDatabase("db:seed");
+
   // getCurrentUser() reads cookies and only works inside a request, so the seed
   // addresses the development identity directly.
   const account = await ensureDevelopmentUser();

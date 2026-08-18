@@ -1,3 +1,4 @@
+import { unstable_rethrow } from "next/navigation";
 import { CoachCard } from "@/features/dashboard/components/coach-card";
 import { ProgressPreview } from "@/features/dashboard/components/progress-preview";
 import { TodayBreakdown } from "@/features/dashboard/components/today-breakdown";
@@ -30,6 +31,8 @@ export default async function DashboardPage() {
     if (!user) return null;
     overview = await getTrackerOverview(user);
   } catch (error) {
+    // Never swallow Next.js's own dynamic-rendering signal from `cookies()`.
+    unstable_rethrow(error);
     // Identity or the tracker could not be read — almost always a database that
     // is not running. Say so rather than reporting zeroes.
     console.error("[dashboard] tracker unavailable", error);
