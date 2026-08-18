@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import {
+  OnboardingIncompleteError,
+  getCurrentUser,
+  requireOnboarded,
+} from "@/lib/auth/current-user";
 import { isActivityType } from "./domain/activity";
 import { validateManualEntry } from "./domain/manual-entry";
 import {
@@ -22,6 +26,7 @@ import {
 export type ActionResult = { ok: true } | { ok: false; error: string; field?: string };
 
 const SIGNED_OUT = "Your session has expired. Reopen the app from Telegram.";
+const NOT_SET_UP = "Finish setting up your language before tracking time.";
 
 /**
  * Resolves the caller, or throws so the surrounding handler reports a failure.
@@ -30,10 +35,19 @@ const SIGNED_OUT = "Your session has expired. Reopen the app from Telegram.";
  */
 class SignedOutError extends Error {}
 
+/**
+ * Two distinct refusals, never one.
+ *
+ * A signed-out caller has no account; an authenticated caller who has not
+ * finished onboarding has an account but no language to file time against.
+ * Neither is allowed to reach the data layer, and neither is quietly given a
+ * language — a session with no language is exactly the state the schema and
+ * the onboarding transaction exist to prevent.
+ */
 async function requireUser() {
   const user = await getCurrentUser();
   if (!user) throw new SignedOutError(SIGNED_OUT);
-  return user;
+  return requireOnboarded(user);
 }
 
 /**
@@ -44,6 +58,9 @@ async function requireUser() {
 function toResult(error: unknown, fallback: string): ActionResult {
   if (error instanceof SignedOutError) {
     return { ok: false, error: SIGNED_OUT };
+  }
+  if (error instanceof OnboardingIncompleteError) {
+    return { ok: false, error: NOT_SET_UP };
   }
   if (error instanceof TrackerError) {
     return { ok: false, error: error.message };

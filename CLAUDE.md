@@ -49,9 +49,11 @@ Versions come from `package.json` — check there rather than assuming.
 
 ## 4. What exists today
 
-Working: mobile-first dashboard shell; persistent tracker on PostgreSQL; timed
-sessions (start / stop / discard) and manual entries; an explicit local development
-identity; the Telegram Mini App bridge; server-side `initData` validation; internal
+Working: first-run onboarding — a new account picks the language it is learning,
+confirms the timezone its device reports and chooses a daily goal, all written in
+one transaction before any other screen opens; mobile-first dashboard shell;
+persistent tracker on PostgreSQL; timed sessions (start / stop / discard) and
+manual entries; an explicit local development identity; the Telegram Mini App bridge; server-side `initData` validation; internal
 opaque auth sessions; per-user data isolation; this-week and today analytics
 computed from real rows; a minimal Telegram bot layer — a secret-verified webhook,
 `/start` and `/help`, an "Open Language OS" Web App button, and explicit scripts that
@@ -67,8 +69,9 @@ not exist yet; do not write copy that implies it does.
 **Demo content, not functionality** — marked as such in
 `src/features/dashboard/demo-analytics.ts`: the Coach recommendation and the
 Errors / 1000 words trend. Never present either as a working feature. Not built at
-all: Speaking AI, Writing review AI, vocabulary and SRS, the mistake engine, the
-onboarding, notifications, payments. The bot logs nothing and parses no
+all: Speaking AI, Writing review AI, vocabulary and SRS, the mistake engine,
+notifications, payments. Onboarding sets a language, a timezone and a goal once;
+nothing can change any of the three afterwards, because settings do not exist. The bot logs nothing and parses no
 natural language: it answers two commands and stays quiet otherwise.
 
 ## 5. Architecture invariants
@@ -79,6 +82,16 @@ Not preferences. Breaking one is a bug.
 is `getCurrentUser()` in `src/lib/auth/current-user.ts`. The tracker and every future
 feature must never touch a Telegram user id — Telegram-specific identity stays behind
 the auth boundary.
+
+**Authenticated is not set up.** They are two states and the code keeps them apart.
+Authentication creates a user row and a session, and nothing else: no language, no
+timezone, no goal. `CurrentUser` therefore carries a nullable `primaryLanguage`, and
+only `OnboardedUser` — narrowed by `isOnboarded()` / `requireOnboarded()` in
+`src/lib/auth/onboarding-state.ts` — may reach the tracker or anything that computes a
+day. `users.onboardingCompletedAt` is the record of it; the presence of a cookie, a
+session or a language row is not. Every route resolves its own access through
+`resolvePageAccess()` and sends an unfinished account to `/onboarding`; the layout
+swapping its chrome is presentation, never the boundary.
 
 **Telegram authentication.** `initDataUnsafe` is never an authentication source.
 The chain is raw `Telegram.WebApp.initData` → server-side validation → internal
@@ -135,6 +148,8 @@ Activity types: `video`, `podcast`, `reading`, `conversation`, `writing`, `speak
 
 `other` counts toward total language time but not toward those three groups.
 
+- The daily goal lives on `user_languages.daily_goal_minutes`, chosen in onboarding.
+  Nothing renders a default in its place.
 - The active timer's source of truth is `startedAt`, never a client counter.
 - A finished session's duration is recomputed server-side from its timestamps.
 - One active timer per user, enforced by a partial unique index as well as in code.
@@ -176,8 +191,9 @@ src/app/              routes, root layout, design tokens, the auth endpoint
 src/components/       auth screens, layout shell, shared ui primitives
 src/db/               Drizzle schema, connection pool, env reading
 src/features/<name>/  domain/ (pure rules) · data/ (queries) · actions.ts · components/
-src/lib/              auth/ (identity, sessions) · telegram/ (bridge, validator, bot
-                      API client, update handler) · time, format
+src/lib/              auth/ (identity, sessions, onboarding state, route access) ·
+                      telegram/ (bridge, validator, bot API client, update
+                      handler) · time, format
 drizzle/              generated migrations
 scripts/              explicit development scripts
 ```
@@ -272,9 +288,9 @@ say which you used.
   yet (see the session-lifecycle limitation below).
 - The bot is a door, not a feature surface: no logging by message, no voice, no
   reminders, and `/start` payloads are parsed but unused.
-- A new user's first language is hardcoded to English — a temporary product decision
-  until onboarding exists, not an architectural rule.
-- Timezone comes from `DEFAULT_TIMEZONE`; users cannot set their own yet.
+- Onboarding is one-way: nobody can change their language, timezone or daily goal
+  afterwards, and there is no second language. `DEFAULT_TIMEZONE` now only seeds the
+  development account.
 - Session revocation and expired-row cleanup exist in `src/lib/auth/session.ts` but
   are wired to no UI and no schedule; there is no session rotation and no logout.
 - The bottom sheet has focus-on-open, Escape and scroll lock, but no full focus trap.

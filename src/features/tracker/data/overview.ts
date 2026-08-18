@@ -1,8 +1,7 @@
-import type { CurrentUser } from "@/lib/auth/current-user";
+import type { OnboardedUser } from "@/lib/auth/current-user";
 import { addLocalDays, elapsedSeconds, localDayInterval, localDayKey, localWeekInterval } from "@/lib/time";
 import { ACTIVITY_LABELS, BREAKDOWN_GROUPS, GROUP_LABELS, type ActivityGroup, type ActivityType } from "../domain/activity";
 import { buildWeekDays, groupTotals, type DayTotal, weekOverWeekChange } from "../domain/aggregate";
-import { DEFAULT_DAILY_GOAL_MINUTES } from "../domain/goals";
 import { getActiveSession, getSessionsInInterval } from "./sessions";
 
 /**
@@ -31,6 +30,7 @@ export type WeekView = {
   previousSeconds: number;
   /** null when the previous week holds nothing worth comparing against. */
   changePercent: number | null;
+  /** The learner's own target for their primary language. Never a default. */
   dailyGoalMinutes: number;
   days: DayTotal[];
 };
@@ -43,8 +43,13 @@ export type TrackerOverview = {
   todayDayKey: string;
 };
 
+/**
+ * Takes an OnboardedUser, not a CurrentUser: every number below is computed in
+ * the learner's own timezone and drawn against the learner's own goal, and
+ * neither exists until onboarding has run.
+ */
 export async function getTrackerOverview(
-  user: CurrentUser,
+  user: OnboardedUser,
   now = new Date(),
 ): Promise<TrackerOverview> {
   const { timeZone } = user;
@@ -89,7 +94,7 @@ export async function getTrackerOverview(
       seconds: weekTotals.total,
       previousSeconds: previousTotals.total,
       changePercent: weekOverWeekChange(weekTotals.total, previousTotals.total),
-      dailyGoalMinutes: DEFAULT_DAILY_GOAL_MINUTES,
+      dailyGoalMinutes: user.primaryLanguage.dailyGoalMinutes,
       days: buildWeekDays({
         sessions: weekSessions,
         previousWeekSessions,

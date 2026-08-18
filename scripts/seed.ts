@@ -8,10 +8,11 @@
  */
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { assertDevelopmentDatabase } from "@/db/env";
-import { sessions } from "@/db/schema";
-import { ensureDevelopmentUser } from "@/lib/auth/current-user";
-import { ensurePrimaryLanguage } from "@/lib/auth/telegram-login";
+import { assertDevelopmentDatabase, defaultTimezone } from "@/db/env";
+import { sessions, users } from "@/db/schema";
+import { completeOnboarding } from "@/features/onboarding/data/complete";
+import { normaliseTimeZone } from "@/features/onboarding/domain/timezone";
+import { ensureDevelopmentUser, loadPrimaryLanguage } from "@/lib/auth/current-user";
 import { addLocalDays, startOfLocalWeek } from "@/lib/time";
 import type { ActivityType } from "@/features/tracker/domain/activity";
 
@@ -43,11 +44,33 @@ async function main() {
   // getCurrentUser() reads cookies and only works inside a request, so the seed
   // addresses the development identity directly.
   const account = await ensureDevelopmentUser();
-  const language = await ensurePrimaryLanguage(account.id);
+
+  /**
+   * A fresh development user is created bare, exactly like a new Telegram
+   * account, so `npm run dev` shows the real onboarding flow. Seeding is the
+   * other path: it wants a working dashboard immediately, so it runs the same
+   * onboarding transaction the flow does rather than inventing rows of its own.
+   * Already set up, this changes nothing.
+   */
+  await completeOnboarding({
+    userId: account.id,
+    submission: {
+      language: { code: "en", name: "English" },
+      // DEFAULT_TIMEZONE is operator-supplied, so it goes through the same
+      // check a learner's device answer would.
+      timeZone: normaliseTimeZone(defaultTimezone()) ?? "UTC",
+      dailyGoalMinutes: 45,
+    },
+  });
+
+  const language = await loadPrimaryLanguage(account.id);
+  if (!language) throw new Error("The development user has no language to seed against.");
+
+  const [fresh] = await db.select().from(users).where(eq(users.id, account.id));
   const user = {
     id: account.id,
-    timeZone: account.timezone,
-    primaryLanguage: { id: language.id, name: language.languageName },
+    timeZone: fresh?.timezone ?? account.timezone,
+    primaryLanguage: { id: language.id, name: language.name },
   };
 
   const now = new Date();

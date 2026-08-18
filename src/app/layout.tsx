@@ -4,8 +4,9 @@ import { unstable_rethrow } from "next/navigation";
 import Script from "next/script";
 import { AuthBootstrap } from "@/components/auth/auth-bootstrap";
 import { AppShell } from "@/components/layout/app-shell";
+import { SetupShell } from "@/components/layout/setup-shell";
 import { TelegramViewport } from "@/components/layout/telegram-viewport";
-import { getCurrentUser, type CurrentUser } from "@/lib/auth/current-user";
+import { getCurrentUser, isOnboarded, type CurrentUser } from "@/lib/auth/current-user";
 import "./globals.css";
 
 /** The only typeface in the product. See docs/design-system.md. */
@@ -39,11 +40,17 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   /**
    * Every route is behind authentication, so the gate lives here.
    *
-   * Three outcomes, kept distinct on purpose. A signed-in user gets the app. No
-   * session means the bootstrap screen — never somebody else's data. And if
-   * identity itself could not be resolved (the database is unreachable) we do
-   * *not* claim the visitor is signed out; the app renders and each screen
-   * reports its own unavailability.
+   * Four outcomes, kept distinct on purpose. A signed-in, set-up user gets the
+   * app. A signed-in account that has not finished onboarding gets the bare
+   * setup column instead — no header, no bottom navigation, nothing of the
+   * product showing through behind it. No session at all means the bootstrap
+   * screen, never somebody else's data. And if identity itself could not be
+   * resolved (the database is unreachable) we do *not* claim the visitor is
+   * signed out; the app renders and each screen reports its own unavailability.
+   *
+   * This is the shape of the interface, not the boundary. Which chrome a layout
+   * draws is a presentation decision — React still renders the page beneath it —
+   * so every route resolves its own access as well. See lib/auth/page-access.
    */
   let user: CurrentUser | null = null;
   let identityUnavailable = false;
@@ -60,6 +67,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     console.error("[auth] could not resolve identity", error);
   }
 
+  const needsSetup = user !== null && !isOnboarded(user);
   const showApp = user !== null || identityUnavailable;
 
   return (
@@ -78,7 +86,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body>
         <TelegramViewport />
-        {showApp ? <AppShell user={user}>{children}</AppShell> : <AuthBootstrap />}
+        {needsSetup ? (
+          <SetupShell>{children}</SetupShell>
+        ) : showApp ? (
+          <AppShell user={user}>{children}</AppShell>
+        ) : (
+          <AuthBootstrap />
+        )}
       </body>
     </html>
   );

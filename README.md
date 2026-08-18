@@ -22,6 +22,9 @@ infrastructure. It runs the same code as this repository.
 - **Telegram Mini App** — a mobile-first interface, designed for the Telegram viewport.
 - **Telegram authentication** — the signed `initData` from a launch is verified on the
   server, which then issues its own session in an HttpOnly cookie.
+- **First-run onboarding** — a new account chooses the language it is learning,
+  confirms the timezone its device reports, and picks a daily goal. The three are
+  written in one transaction, and no other screen opens until they are.
 - **Multi-user tracker on PostgreSQL** — every read and write is scoped to the
   authenticated user.
 - **Timed study sessions** — start, stop or discard. Elapsed time is derived from the
@@ -31,8 +34,8 @@ infrastructure. It runs the same code as this repository.
 - **Activity breakdown** — video, podcast, reading, conversation, writing, speaking and
   other, grouped into Input, Speaking and Writing.
 - **Daily and weekly totals** — today and this week, with a real previous-week
-  comparison. Day and week boundaries are computed in the user's timezone, not the
-  server's.
+  comparison, drawn against the daily goal that was chosen during setup. Day and week
+  boundaries are computed in the user's own timezone, not the server's.
 - **Telegram bot** — `/start` and `/help`, a button that opens the Mini App, and a
   webhook that verifies Telegram's secret header.
 

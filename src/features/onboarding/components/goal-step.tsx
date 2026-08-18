@@ -1,0 +1,81 @@
+"use client";
+
+import { cn } from "@/lib/cn";
+import { DAILY_GOAL_OPTIONS } from "@/features/tracker/domain/goals";
+import { FieldError } from "@/components/ui/field-error";
+import { OnboardingStep, PrimaryAction } from "./onboarding-step";
+
+/**
+ * Step three, and the last thing between a new account and a working tracker.
+ *
+ * Four choices, no custom field: the number matters far less than having one,
+ * and a text input here would be a decision to agonise over on the first
+ * screen. It can be changed later, once settings exist.
+ */
+export function GoalStep({
+  step,
+  totalSteps,
+  value,
+  onChange,
+  onSubmit,
+  onBack,
+  pending,
+  error,
+}: {
+  step: number;
+  totalSteps: number;
+  value: number;
+  onChange: (minutes: number) => void;
+  onSubmit: () => void;
+  onBack: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  return (
+    <OnboardingStep
+      step={step}
+      totalSteps={totalSteps}
+      title="How much language time do you want each day?"
+      description="The weekly chart is drawn against it. Missing a day is fine — the line is there to aim at."
+      onBack={onBack}
+      footer={
+        <div>
+          <PrimaryAction onClick={onSubmit} disabled={pending}>
+            {pending ? "Setting up…" : "Start learning"}
+          </PrimaryAction>
+          <FieldError message={error} />
+        </div>
+      }
+    >
+      <div className="grid grid-cols-2 gap-2.5">
+        {DAILY_GOAL_OPTIONS.map((minutes) => {
+          const selected = minutes === value;
+          return (
+            <button
+              key={minutes}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(minutes)}
+              className={cn(
+                "h-20 rounded-[var(--radius-tile)] text-[1.375rem] tracking-[-0.02em] transition-colors",
+                selected
+                  ? "bg-accent font-bold text-accent-ink"
+                  : "bg-surface font-semibold text-fg active:bg-surface-raised",
+              )}
+            >
+              {minutes}
+              <span
+                className={cn(
+                  "ml-1 text-[0.9375rem] font-medium",
+                  selected ? "text-accent-ink/70" : "text-muted",
+                )}
+              >
+                min
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </OnboardingStep>
+  );
+}

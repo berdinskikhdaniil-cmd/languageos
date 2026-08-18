@@ -165,7 +165,7 @@ any error Telegram reports about it.
 | `TELEGRAM_WEBHOOK_SECRET` | for the webhook | Your own random value; the only thing guarding the public webhook endpoint. Server-only. |
 | `TELEGRAM_INIT_DATA_MAX_AGE_SECONDS` | no | How long a launch payload stays acceptable. Default 3600. |
 | `AUTH_SESSION_TTL_SECONDS` | no | Lifetime of a session and its cookie. Default 2592000 (30 days). |
-| `DEFAULT_TIMEZONE` | no | Timezone given to new users, used for day and week boundaries. Default `UTC`. |
+| `DEFAULT_TIMEZONE` | no | Only used by the development seed (`npm run db:seed`). Real accounts confirm their own timezone during onboarding. Default `UTC`. |
 | `ALLOW_DEV_AUTH` | no | **Local development only.** Runs requests without a session as a local development user. Needs the exact string `"true"` *and* a non-production `NODE_ENV`, so a production build ignores it. Never a fallback for a failed Telegram sign-in. |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | no | Only for the bundled Docker container. Unused if you bring your own database. |
 
@@ -181,7 +181,7 @@ Never commit real values. `.env` is gitignored, and `.env.example` is the templa
 
 ## Known limitations
 
-- A new user's first language is hardcoded to English; there is no onboarding yet.
-- Users cannot choose their own timezone — everyone gets `DEFAULT_TIMEZONE`.
+- Onboarding runs once and cannot be revisited: there is no way to change your
+  language, timezone or daily goal afterwards, and no way to study a second language.
 - There is no logout, and no session rotation.
 - A study session that crosses midnight counts entirely toward the day it started on.

@@ -15,7 +15,14 @@ export function databaseUrl(): string {
   return url;
 }
 
-/** Timezone handed to users created before we know their real one. */
+/**
+ * The zone the development seed sets up its account in.
+ *
+ * No longer a fallback for real accounts: a learner's timezone is confirmed
+ * during onboarding, from their own device, and nothing guesses one on their
+ * behalf. This is left for the seed script and for self-hosters who want their
+ * local data to sit in their own day.
+ */
 export function defaultTimezone(): string {
   return process.env.DEFAULT_TIMEZONE ?? "UTC";
 }

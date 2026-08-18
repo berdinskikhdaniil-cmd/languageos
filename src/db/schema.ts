@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   foreignKey,
   index,
   integer,
@@ -46,8 +47,24 @@ export const users = pgTable("users", {
   username: text("username"),
   photoUrl: text("photo_url"),
   telegramLanguageCode: text("telegram_language_code"),
-  /** IANA zone. All day and week boundaries are computed in it. */
+  /**
+   * IANA zone. All day and week boundaries are computed in it.
+   *
+   * "UTC" is a placeholder, not a guess about the learner: it is what a row
+   * carries between sign-in and the end of onboarding, and onboarding is the
+   * only thing that writes a real zone. Nothing user-facing reads it before
+   * then, because an un-onboarded user never reaches a screen that counts days.
+   */
   timezone: text("timezone").notNull().default("UTC"),
+  /**
+   * When first-run onboarding finished. NULL means the account is
+   * authenticated but not set up: no language, no timezone, no goal.
+   *
+   * Deliberately a column and not an inference from "has a language row" —
+   * onboarding is a product state, and reading it must not depend on the shape
+   * of another table.
+   */
+  onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -87,12 +104,32 @@ export const userLanguages = pgTable(
     languageCode: text("language_code").notNull(),
     languageName: text("language_name").notNull(),
     isPrimary: boolean("is_primary").notNull().default(false),
+    /**
+     * How many minutes a day the learner is aiming for, in this language.
+     *
+     * The goal belongs to the language rather than the account: studying two
+     * languages later means two targets, not one shared number.
+     *
+     * The default is 45 because that is the figure the dashboard drew for
+     * everyone before goals were chosen — so rows that predate onboarding keep
+     * showing exactly what they showed yesterday. Onboarding always writes an
+     * explicit value and never relies on it.
+     */
+    dailyGoalMinutes: integer("daily_goal_minutes").notNull().default(45),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex("user_languages_user_code_unique").on(table.userId, table.languageCode),
     /** Lets sessions reference (user, language) as a pair. See below. */
     unique("user_languages_id_user_id_key").on(table.userId, table.id),
+    /**
+     * A goal outside this range is a bug, not a preference. Enforced here so no
+     * future code path can write one, whatever the UI offers.
+     */
+    check(
+      "user_languages_daily_goal_minutes_range",
+      sql`${table.dailyGoalMinutes} between 5 and 600`,
+    ),
   ],
 );
 

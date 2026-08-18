@@ -15,7 +15,12 @@ function initialsFor(user: CurrentUser): string {
 }
 
 /**
- * Identity, shown plainly.
+ * Identity, shown plainly: the learner's first name and the language they are
+ * studying.
+ *
+ * The language can be absent — during setup, and in the moment after a database
+ * failure when identity resolved but nothing else did — so the line renders
+ * whichever halves exist rather than assuming both.
  *
  * The Telegram profile photo is stored on sign-in but not rendered: the URLs are
  * short-lived and would need remote-image configuration for very little gain.
@@ -29,15 +34,13 @@ export function AppHeader({ user }: { user: CurrentUser | null }) {
           <p className="text-[1.0625rem] font-bold leading-none tracking-[-0.02em]">
             Language <span className="text-accent">OS</span>
           </p>
-          {user ? (
+          {user && (user.firstName || user.primaryLanguage) ? (
             <p className="mt-2 truncate text-[0.8125rem] leading-none text-muted">
-              {user.firstName ? (
-                <>
-                  {user.firstName}
-                  <span className="text-faint"> · {user.primaryLanguage.name}</span>
-                </>
+              {user.firstName}
+              {user.firstName && user.primaryLanguage ? (
+                <span className="text-faint"> · {user.primaryLanguage.name}</span>
               ) : (
-                user.primaryLanguage.name
+                user.primaryLanguage?.name
               )}
             </p>
           ) : null}
