@@ -82,6 +82,29 @@ export function localNoonFromDayKey(dayKey: string, timeZone: string): Date | nu
   return Number.isNaN(instant.getTime()) ? null : instant;
 }
 
+/**
+ * A short, human date for a list: "Today", "Yesterday", "17 Aug", "3 Sep 2025".
+ *
+ * Timezone-dependent, so it lives here rather than in lib/format: whether
+ * something happened "today" is a question only the learner's own zone can
+ * answer, and the server's is not it. The year appears only when it differs
+ * from the current one, which keeps the common case short.
+ */
+export function localDateLabel(instant: Date, timeZone: string, now: Date): string {
+  const key = localDayKey(instant, timeZone);
+  const todayKey = localDayKey(now, timeZone);
+
+  if (key === todayKey) return "Today";
+  if (key === localDayKey(addLocalDays(now, -1, timeZone), timeZone)) return "Yesterday";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone,
+    ...(key.slice(0, 4) === todayKey.slice(0, 4) ? {} : { year: "numeric" }),
+  }).format(instant);
+}
+
 export function elapsedSeconds(from: Date, to: Date): number {
   return Math.max(0, differenceInSeconds(to, from));
 }

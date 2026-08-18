@@ -1,7 +1,8 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { writingEntries, writingIssues, writingReviews } from "@/db/schema";
 import type { WritingEntryRow, WritingIssueRow, WritingReviewRow } from "@/db/schema";
+import { writingEntryStatus, type WritingEntryStatus } from "../domain/entry-status";
 import type { WritingType } from "../domain/writing-entry";
 
 /**
@@ -97,6 +98,69 @@ export async function saveRewrite({
     .returning();
 
   return updated ?? null;
+}
+
+export type RecentWritingEntry = {
+  id: string;
+  type: WritingType;
+  createdAt: Date;
+  wordCount: number;
+  status: WritingEntryStatus;
+};
+
+/**
+ * The last few pieces of writing, for the short list on Practice.
+ *
+ * Scoped twice over: to the authenticated user, and to the language they are
+ * currently studying. Both ids come from the server's own user context — the
+ * only argument a caller may influence is how many rows to return.
+ *
+ * This is not a history feature and is not meant to become one by accident:
+ * there is no paging, no filter and no route behind it. It exists so a learner
+ * can get back to something they wrote a minute ago.
+ */
+export async function getRecentWritingEntries({
+  userId,
+  userLanguageId,
+  limit = 3,
+}: {
+  userId: string;
+  userLanguageId: string;
+  limit?: number;
+}): Promise<RecentWritingEntry[]> {
+  const rows = await db
+    .select({
+      id: writingEntries.id,
+      type: writingEntries.type,
+      createdAt: writingEntries.createdAt,
+      wordCount: writingEntries.wordCount,
+      revisedText: writingEntries.revisedText,
+      reviewStatus: writingReviews.status,
+      summary: writingReviews.summary,
+      improvedText: writingReviews.improvedText,
+    })
+    .from(writingEntries)
+    // A left join: an entry whose review failed, or which has none at all, is
+    // exactly the one a learner most needs to find again.
+    .leftJoin(writingReviews, eq(writingReviews.entryId, writingEntries.id))
+    .where(
+      and(eq(writingEntries.userId, userId), eq(writingEntries.userLanguageId, userLanguageId)),
+    )
+    .orderBy(desc(writingEntries.createdAt))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    id: row.id,
+    type: row.type,
+    createdAt: row.createdAt,
+    wordCount: row.wordCount,
+    status: writingEntryStatus({
+      revisedText: row.revisedText,
+      review: row.reviewStatus
+        ? { status: row.reviewStatus, summary: row.summary, improvedText: row.improvedText }
+        : null,
+    }),
+  }));
 }
 
 /**

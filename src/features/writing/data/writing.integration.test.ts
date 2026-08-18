@@ -1,11 +1,16 @@
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/db";
-import { writingEntries, writingIssues, writingReviews } from "@/db/schema";
+import { userLanguages, writingEntries, writingIssues, writingReviews } from "@/db/schema";
 import type { OnboardedUser } from "@/lib/auth/current-user";
 import { isUsableReviewContent } from "../domain/review";
 import { createTestAccount, deleteTestAccount, type TestAccount } from "@/test/db-fixtures";
-import { createWritingEntry, getWritingEntry, saveRewrite } from "./entries";
+import {
+  createWritingEntry,
+  getRecentWritingEntries,
+  getWritingEntry,
+  saveRewrite,
+} from "./entries";
 import { runReview } from "./review-runner";
 import { ageReviewForTesting, readReview } from "./reviews";
 
@@ -609,6 +614,161 @@ describe("a bad review already sitting in the database", () => {
       alreadyComplete: true,
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("the recent writing list", () => {
+  /** Entries are ordered by createdAt, so the fixtures need distinct instants. */
+  async function entryAt(account: TestAccount, when: string, languageId?: string) {
+    const [row] = await db
+      .insert(writingEntries)
+      .values({
+        userId: account.id,
+        userLanguageId: languageId ?? account.languageId,
+        type: "free_writing",
+        originalText: `${ORIGINAL} Written at ${when}.`,
+        wordCount: 18,
+        createdAt: new Date(when),
+      })
+      .returning();
+    return row;
+  }
+
+  it("shows the newest first", async () => {
+    await entryAt(alice, "2026-08-16T10:00:00Z");
+    const newest = await entryAt(alice, "2026-08-18T10:00:00Z");
+    const middle = await entryAt(alice, "2026-08-17T10:00:00Z");
+
+    const recent = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+
+    expect(recent.map((entry) => entry.id).slice(0, 2)).toEqual([newest.id, middle.id]);
+  });
+
+  it("stops at three, however much has been written", async () => {
+    for (let day = 10; day < 20; day += 1) {
+      await entryAt(alice, `2026-08-${day}T10:00:00Z`);
+    }
+
+    const recent = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+    expect(recent).toHaveLength(3);
+    // And they are the three most recent, not the first three written.
+    expect(recent[0].createdAt).toEqual(new Date("2026-08-19T10:00:00Z"));
+  });
+
+  it("shows nothing before anything has been written", async () => {
+    expect(
+      await getRecentWritingEntries({ userId: alice.id, userLanguageId: alice.languageId }),
+    ).toEqual([]);
+  });
+
+  it("never shows one learner another learner's writing", async () => {
+    await entryAt(alice, "2026-08-18T10:00:00Z");
+    const bobs = await entryAt(bob, "2026-08-18T11:00:00Z");
+
+    const forAlice = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+
+    expect(forAlice.map((entry) => entry.id)).not.toContain(bobs.id);
+    expect(forAlice).toHaveLength(1);
+  });
+
+  it("does not leak across a user's own languages", async () => {
+    const [second] = await db
+      .insert(userLanguages)
+      .values({
+        userId: alice.id,
+        languageCode: "de",
+        languageName: "German",
+        isPrimary: false,
+      })
+      .returning();
+
+    const english = await entryAt(alice, "2026-08-18T10:00:00Z");
+    const german = await entryAt(alice, "2026-08-18T11:00:00Z", second.id);
+
+    const forEnglish = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+    const forGerman = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: second.id,
+    });
+
+    expect(forEnglish.map((entry) => entry.id)).toEqual([english.id]);
+    expect(forGerman.map((entry) => entry.id)).toEqual([german.id]);
+  });
+
+  it("says an unreviewed entry needs review", async () => {
+    await entryAt(alice, "2026-08-18T10:00:00Z");
+    const [recent] = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+    expect(recent.status).toBe("needs_review");
+  });
+
+  it("says a reviewed entry is reviewed", async () => {
+    const entry = await entryAt(alice, "2026-08-18T10:00:00Z");
+    await runReview({ entry, user: asUser(alice, "Alice") });
+
+    const [recent] = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+    expect(recent.status).toBe("reviewed");
+  });
+
+  it("says the production-shaped bad review still needs review", async () => {
+    const entry = await entryAt(alice, "2026-08-18T10:00:00Z");
+    await db.insert(writingReviews).values({
+      entryId: entry.id,
+      model: "anthropic/claude-sonnet-5",
+      status: "completed",
+      summary: "Nice simple story! The main thing to work on is past tense consistency.",
+      improvedText: ":",
+    });
+
+    const [recent] = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+    // Calling it "Reviewed" would send somebody to an empty screen.
+    expect(recent.status).toBe("needs_review");
+  });
+
+  it("says a rewritten entry is rewritten", async () => {
+    const entry = await entryAt(alice, "2026-08-18T10:00:00Z");
+    await runReview({ entry, user: asUser(alice, "Alice") });
+    await saveRewrite({
+      entryId: entry.id,
+      userId: alice.id,
+      revisedText: "Yesterday I went to the shop and I bought some bread.",
+    });
+
+    const [recent] = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+    expect(recent.status).toBe("rewritten");
+  });
+
+  it("reports the word count and the kind of writing", async () => {
+    await entryAt(alice, "2026-08-18T10:00:00Z");
+    const [recent] = await getRecentWritingEntries({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+
+    expect(recent).toMatchObject({ type: "free_writing", wordCount: 18 });
   });
 });
 
