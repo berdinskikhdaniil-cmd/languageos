@@ -46,10 +46,15 @@ Versions come from `package.json` — check there rather than assuming.
   HttpOnly cookie — no UI framework, no AI provider, no second ORM
 - Telegram Bot API: a small typed client over `fetch` in `src/lib/telegram/bot-api.ts`
   — no bot framework; add one only when a real need appears
+- AI: OpenRouter's chat-completions endpoint through a small typed `fetch` client in
+  `src/lib/ai/openrouter.ts` — no AI SDK, no agent framework. The model is
+  `OPENROUTER_MODEL` and is never hardcoded in feature code
 
 ## 4. What exists today
 
-Working: first-run onboarding — a new account picks the language it is learning,
+Working: writing practice with real AI review — free writing or a retelling goes
+to OpenRouter, comes back as a structured review, and is stored with its issues,
+their positions in the text and the learner's own rewrite; first-run onboarding — a new account picks the language it is learning,
 confirms the timezone its device reports and chooses a daily goal, all written in
 one transaction before any other screen opens; mobile-first dashboard shell;
 persistent tracker on PostgreSQL; timed sessions (start / stop / discard) and
@@ -69,8 +74,10 @@ not exist yet; do not write copy that implies it does.
 **Demo content, not functionality** — marked as such in
 `src/features/dashboard/demo-analytics.ts`: the Coach recommendation and the
 Errors / 1000 words trend. Never present either as a working feature. Not built at
-all: Speaking AI, Writing review AI, vocabulary and SRS, the mistake engine,
-notifications, payments. Onboarding sets a language, a timezone and a goal once;
+all: Speaking, vocabulary and SRS, the mistake engine, notifications, payments.
+Writing stores its issues, which is the ground the mistake engine will stand on,
+but nothing aggregates them yet — there is no writing history, no second review
+after a rewrite and no analytics over past work. Onboarding sets a language, a timezone and a goal once;
 nothing can change any of the three afterwards, because settings do not exist. The bot logs nothing and parses no
 natural language: it answers two commands and stays quiet otherwise.
 
@@ -130,6 +137,19 @@ must therefore leave the previous deployment working. Expand, then contract:
 A rename is an add, a backfill, a code switch and a drop, spread across
 iterations; never one migration. Dropping a column, dropping a table or deleting
 rows needs explicit agreement from the user first — say what will be lost and wait.
+
+**AI output is never trusted.** A learner's text is untrusted content: it goes in
+the user message inside explicit markers, never in the system message, and the
+system message says the block is data and not a source of instructions. What comes
+back is untrusted too — the JSON Schema is sent with `strict: true` and provider
+routing uses `require_parameters`, and the response is still validated by
+`parseReview` before a row is written. Character offsets are never taken from a
+model: the server locates each quoted fragment in the stored text itself, and an
+issue it cannot place unambiguously keeps everything except its highlight.
+
+**The learner's text is saved before the provider is called.** No AI failure may
+cost somebody their draft. A review is a separate row, created `pending` before
+the call, and its unique `entry_id` is what makes a double tap harmless.
 
 **Time.** Timezone arithmetic lives in `src/lib/time.ts` and nowhere else — the
 server's timezone is not the user's. Pass `now` in rather than scattering
@@ -291,6 +311,12 @@ say which you used.
 - Onboarding is one-way: nobody can change their language, timezone or daily goal
   afterwards, and there is no second language. `DEFAULT_TIMEZONE` now only seeds the
   development account.
+- Writing has no history screen: an entry is reachable only from the review it was
+  just given, and nothing lists past work. The rows are there; the route is not.
+- The only guards on AI cost are a text-length cap, one review per entry and a
+  per-user daily count (`WRITING_DAILY_REVIEW_LIMIT`). The daily count is a plain
+  query rather than a rate limiter, so two requests racing at the boundary can both
+  pass. There is no billing, no quota and no per-account budget.
 - Session revocation and expired-row cleanup exist in `src/lib/auth/session.ts` but
   are wired to no UI and no schedule; there is no session rotation and no logout.
 - The bottom sheet has focus-on-open, Escape and scroll lock, but no full focus trap.

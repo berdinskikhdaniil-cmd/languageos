@@ -163,6 +163,12 @@ export const sessions = pgTable(
       .where(sql`${table.endedAt} is null`),
     index("sessions_user_started_at_idx").on(table.userId, table.startedAt),
     /**
+     * Lets another table reference (user, session) as a pair, the same way
+     * user_languages does. Writing uses it so a retelling can only ever point
+     * at a session its own owner recorded.
+     */
+    unique("sessions_id_user_id_key").on(table.userId, table.id),
+    /**
      * A composite reference rather than one on user_language_id alone: it makes
      * it structurally impossible to file a session against somebody else's
      * language, whatever a future code path or a bug might try to insert.
@@ -175,10 +181,182 @@ export const sessions = pgTable(
   ],
 );
 
+/** Free writing, or retelling something the learner watched, read or heard. */
+export const writingTypeEnum = pgEnum("writing_type", ["free_writing", "retelling"]);
+
+/**
+ * Where a review is in its one and only lifecycle. The row is created
+ * `pending` before the provider is called, which is what makes it a lock as
+ * well as a record — see features/writing/data/reviews.ts.
+ */
+export const writingReviewStatusEnum = pgEnum("writing_review_status", [
+  "pending",
+  "completed",
+  "failed",
+]);
+
+/**
+ * Broad, language-neutral buckets. Defined once in
+ * features/writing/domain/review.ts; this enum is the storage half of that
+ * list and a test holds the two together.
+ */
+export const writingIssueCategoryEnum = pgEnum("writing_issue_category", [
+  "grammar",
+  "agreement",
+  "word_order",
+  "word_choice",
+  "spelling",
+  "punctuation",
+  "naturalness",
+  "style",
+  "other",
+]);
+
+export const writingIssueSeverityEnum = pgEnum("writing_issue_severity", [
+  "error",
+  "awkward",
+  "style",
+]);
+
+export const writingEntries = pgTable(
+  "writing_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userLanguageId: uuid("user_language_id").notNull(),
+    type: writingTypeEnum("type").notNull(),
+    /** Exactly what the learner wrote. Never rewritten by us, at any point. */
+    originalText: text("original_text").notNull(),
+    /** The learner's own second attempt. Null until they rewrite it. */
+    revisedText: text("revised_text"),
+    /** Of the original, at submission time. See domain/word-count.ts. */
+    wordCount: integer("word_count").notNull(),
+    /**
+     * The tracker session this retelling is about, when there is one. Nullable
+     * and unused by the interface today: it is here so a future "retell what
+     * you just watched" has somewhere to point without a second migration.
+     */
+    sourceSessionId: uuid("source_session_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("writing_entries_user_created_at_idx").on(table.userId, table.createdAt),
+    /**
+     * The same composite reference the tracker uses: it is structurally
+     * impossible to file writing against somebody else's language, whatever a
+     * future code path might try to insert.
+     */
+    foreignKey({
+      columns: [table.userId, table.userLanguageId],
+      foreignColumns: [userLanguages.userId, userLanguages.id],
+      name: "writing_entries_user_language_belongs_to_user_fk",
+    }).onDelete("cascade"),
+    /** And the same for the optional session this entry may refer to. */
+    foreignKey({
+      columns: [table.userId, table.sourceSessionId],
+      foreignColumns: [sessions.userId, sessions.id],
+      name: "writing_entries_source_session_belongs_to_user_fk",
+    }).onDelete("set null"),
+    /**
+     * The cost boundary, in the database rather than only in validation.
+     * Mirrors MAX_WRITING_CHARS in features/writing/domain/writing-entry.ts.
+     */
+    check("writing_entries_original_text_length", sql`char_length(${table.originalText}) between 1 and 6000`),
+    check(
+      "writing_entries_revised_text_length",
+      sql`${table.revisedText} is null or char_length(${table.revisedText}) between 1 and 6000`,
+    ),
+    check("writing_entries_word_count_positive", sql`${table.wordCount} >= 0`),
+  ],
+);
+
+export const writingReviews = pgTable(
+  "writing_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /**
+     * Unique: one review per entry, for this iteration and as the mechanism
+     * that makes a double submission harmless. A second attempt collides here
+     * rather than calling the provider again.
+     */
+    entryId: uuid("entry_id")
+      .notNull()
+      .unique()
+      .references(() => writingEntries.id, { onDelete: "cascade" }),
+    status: writingReviewStatusEnum("status").notNull().default("pending"),
+    /** Whatever answered, as the provider reported it — not what we asked for. */
+    model: text("model").notNull(),
+    summary: text("summary"),
+    improvedText: text("improved_text"),
+    /** As reported by the provider. Null when it said nothing about usage. */
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    /**
+     * A short internal reason code for a failed attempt, e.g. "timeout". Never
+     * shown to the learner, who gets one calm sentence instead.
+     */
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("writing_reviews_created_at_idx").on(table.createdAt),
+    /** A completed review without its content would render as an empty screen. */
+    check(
+      "writing_reviews_completed_has_content",
+      sql`${table.status} <> 'completed' or (${table.summary} is not null and ${table.improvedText} is not null)`,
+    ),
+  ],
+);
+
+export const writingIssues = pgTable(
+  "writing_issues",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reviewId: uuid("review_id")
+      .notNull()
+      .references(() => writingReviews.id, { onDelete: "cascade" }),
+    /** Display and grouping order, as the review returned them. */
+    position: integer("position").notNull(),
+    category: writingIssueCategoryEnum("category").notNull(),
+    /** The specific weak point: "articles", "past tense", "case". Optional. */
+    label: text("label"),
+    severity: writingIssueSeverityEnum("severity").notNull(),
+    originalFragment: text("original_fragment").notNull(),
+    suggestion: text("suggestion").notNull(),
+    explanation: text("explanation").notNull(),
+    /**
+     * Where the fragment sits in the original text, in UTF-16 code units —
+     * resolved by us, never taken from the model. Null when the fragment could
+     * not be placed unambiguously, which costs the issue its highlight and
+     * nothing else.
+     */
+    startOffset: integer("start_offset"),
+    endOffset: integer("end_offset"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("writing_issues_review_id_idx").on(table.reviewId, table.position),
+    /** Half a span is not a span. */
+    check(
+      "writing_issues_offsets_paired",
+      sql`(${table.startOffset} is null) = (${table.endOffset} is null)`,
+    ),
+    check(
+      "writing_issues_offsets_ordered",
+      sql`${table.startOffset} is null or (${table.startOffset} >= 0 and ${table.endOffset} > ${table.startOffset})`,
+    ),
+  ],
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   languages: many(userLanguages),
   sessions: many(sessions),
   authSessions: many(authSessions),
+  writingEntries: many(writingEntries),
 }));
 
 export const authSessionsRelations = relations(authSessions, ({ one }) => ({
@@ -198,7 +376,34 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
   }),
 }));
 
+export const writingEntriesRelations = relations(writingEntries, ({ one }) => ({
+  user: one(users, { fields: [writingEntries.userId], references: [users.id] }),
+  userLanguage: one(userLanguages, {
+    fields: [writingEntries.userLanguageId],
+    references: [userLanguages.id],
+  }),
+  review: one(writingReviews),
+}));
+
+export const writingReviewsRelations = relations(writingReviews, ({ one, many }) => ({
+  entry: one(writingEntries, {
+    fields: [writingReviews.entryId],
+    references: [writingEntries.id],
+  }),
+  issues: many(writingIssues),
+}));
+
+export const writingIssuesRelations = relations(writingIssues, ({ one }) => ({
+  review: one(writingReviews, {
+    fields: [writingIssues.reviewId],
+    references: [writingReviews.id],
+  }),
+}));
+
 export type UserRow = typeof users.$inferSelect;
 export type AuthSessionRow = typeof authSessions.$inferSelect;
 export type UserLanguageRow = typeof userLanguages.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
+export type WritingEntryRow = typeof writingEntries.$inferSelect;
+export type WritingReviewRow = typeof writingReviews.$inferSelect;
+export type WritingIssueRow = typeof writingIssues.$inferSelect;

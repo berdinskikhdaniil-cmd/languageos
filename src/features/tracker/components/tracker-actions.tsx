@@ -45,7 +45,7 @@ export function TrackerActions({ activeSession, todayDayKey }: TrackerActionsPro
           <Mic size={18} strokeWidth={1.8} aria-hidden />
           <span className="text-[0.75rem] font-medium leading-none">Speaking</span>
         </Link>
-        <Link href="/practice" className={TILE_CLASS}>
+        <Link href="/practice/writing" className={TILE_CLASS}>
           <PenLine size={18} strokeWidth={1.8} aria-hidden />
           <span className="text-[0.75rem] font-medium leading-none">Write</span>
         </Link>

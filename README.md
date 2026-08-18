@@ -31,6 +31,10 @@ infrastructure. It runs the same code as this repository.
   stored start timestamp, so it survives a reload, and the final duration is
   recomputed server-side. One running session per user, enforced by a database index.
 - **Manual entries** — log a session after the fact, with server-side validation.
+- **Writing with AI feedback** — write freely or retell something you watched or
+  read, and get back a short summary, the mistakes marked in your own text with an
+  explanation and a correction for each, and a better version of the whole thing.
+  Then rewrite it yourself: you get your own draft back, not the corrected one.
 - **Activity breakdown** — video, podcast, reading, conversation, writing, speaking and
   other, grouped into Input, Speaking and Writing.
 - **Daily and weekly totals** — today and this week, with a real previous-week
@@ -41,7 +45,12 @@ infrastructure. It runs the same code as this repository.
 
 Two panels on the dashboard — the coach recommendation and the errors-per-1000-words
 trend — are **placeholder content, not working features**. They are marked as such in
-`src/features/dashboard/demo-analytics.ts`. There is no AI in this codebase yet.
+`src/features/dashboard/demo-analytics.ts`; neither is connected to the writing
+review, and there is no mistake engine behind them yet.
+
+The writing review is the only AI in the product. It runs through
+[OpenRouter](https://openrouter.ai), on whichever model you configure, and the
+feature stays switched off until you set one.
 
 ## Planned
 

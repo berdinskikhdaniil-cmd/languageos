@@ -1,0 +1,180 @@
+import { and, eq, lt, or } from "drizzle-orm";
+import { db } from "@/db";
+import { writingIssues, writingReviews } from "@/db/schema";
+import type { WritingReviewRow } from "@/db/schema";
+import type { FragmentSpan } from "../domain/fragments";
+import type { ReviewIssue, WritingReview } from "../domain/review";
+
+/**
+ * The review's lifecycle, and the lock that keeps it from happening twice.
+ *
+ * A review row is created *before* the provider is called, with status
+ * `pending`, and the unique constraint on `entry_id` is what makes that row a
+ * claim. Two taps race to insert; one wins and calls the provider, the other
+ * finds the existing row and waits. No queue, no scheduler, no second service —
+ * the constraint the schema already needed does the whole job.
+ */
+
+/** A pending row older than this is assumed abandoned: the function that owned
+ *  it died mid-call, and the learner should be able to try again. */
+const STALE_PENDING_MS = 3 * 60 * 1000;
+
+export type ReviewClaim =
+  /** This caller owns the attempt and must finish or fail it. */
+  | { status: "claimed"; review: WritingReviewRow }
+  /** Somebody already reviewed this entry; nothing more to spend. */
+  | { status: "completed"; review: WritingReviewRow }
+  /** Another request is mid-call right now. */
+  | { status: "processing"; review: WritingReviewRow };
+
+/**
+ * Takes ownership of reviewing an entry, or explains who has it.
+ *
+ * Three outcomes and no fourth: a failed attempt can be retaken, an abandoned
+ * one can be retaken once it is stale, and a completed one is never redone.
+ */
+export async function claimReview({
+  entryId,
+  model,
+  now = new Date(),
+}: {
+  entryId: string;
+  model: string;
+  now?: Date;
+}): Promise<ReviewClaim> {
+  const [inserted] = await db
+    .insert(writingReviews)
+    .values({ entryId, model, status: "pending", createdAt: now, updatedAt: now })
+    .onConflictDoNothing({ target: writingReviews.entryId })
+    .returning();
+
+  if (inserted) return { status: "claimed", review: inserted };
+
+  const existing = await readReview(entryId);
+  if (!existing) {
+    // The row vanished between the insert and the read — the entry was deleted.
+    throw new Error("The review could not be claimed.");
+  }
+
+  if (existing.status === "completed") return { status: "completed", review: existing };
+
+  // A failed attempt, or a pending one nobody is coming back to, is retaken.
+  const [retaken] = await db
+    .update(writingReviews)
+    .set({ status: "pending", model, failureReason: null, updatedAt: now })
+    .where(
+      and(
+        eq(writingReviews.id, existing.id),
+        or(
+          eq(writingReviews.status, "failed"),
+          and(
+            eq(writingReviews.status, "pending"),
+            lt(writingReviews.updatedAt, new Date(now.getTime() - STALE_PENDING_MS)),
+          ),
+        ),
+      ),
+    )
+    .returning();
+
+  if (retaken) return { status: "claimed", review: retaken };
+
+  return { status: "processing", review: existing };
+}
+
+export async function readReview(entryId: string): Promise<WritingReviewRow | null> {
+  const [review] = await db
+    .select()
+    .from(writingReviews)
+    .where(eq(writingReviews.entryId, entryId))
+    .limit(1);
+
+  return review ?? null;
+}
+
+export type ResolvedIssue = ReviewIssue & { span: FragmentSpan | null };
+
+/**
+ * Writes the finished review and its issues together.
+ *
+ * One transaction, so an entry is never left showing a summary with no issues
+ * beneath it because the second insert failed. Existing issues are cleared
+ * first: only the claim holder gets here, but a retry that reused a row must
+ * not stack two sets of findings on top of each other.
+ */
+export async function completeReview({
+  reviewId,
+  model,
+  review,
+  issues,
+  usage,
+  now = new Date(),
+}: {
+  reviewId: string;
+  model: string;
+  review: WritingReview;
+  issues: ResolvedIssue[];
+  usage: { inputTokens: number | null; outputTokens: number | null };
+  now?: Date;
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(writingIssues).where(eq(writingIssues.reviewId, reviewId));
+
+    if (issues.length > 0) {
+      await tx.insert(writingIssues).values(
+        issues.map((issue, position) => ({
+          reviewId,
+          position,
+          category: issue.category,
+          label: issue.label,
+          severity: issue.severity,
+          originalFragment: issue.originalFragment,
+          suggestion: issue.suggestion,
+          explanation: issue.explanation,
+          startOffset: issue.span?.start ?? null,
+          endOffset: issue.span?.end ?? null,
+        })),
+      );
+    }
+
+    await tx
+      .update(writingReviews)
+      .set({
+        status: "completed",
+        model,
+        summary: review.summary,
+        improvedText: review.improvedText,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        failureReason: null,
+        updatedAt: now,
+      })
+      .where(eq(writingReviews.id, reviewId));
+  });
+}
+
+/**
+ * Records that an attempt did not work.
+ *
+ * `reason` is an internal code — "timeout", "rate_limited" — kept for whoever
+ * reads the logs. The learner is told one calm sentence and offered the button
+ * again; they never see this string.
+ */
+export async function failReview({
+  reviewId,
+  reason,
+  now = new Date(),
+}: {
+  reviewId: string;
+  reason: string;
+  now?: Date;
+}): Promise<void> {
+  await db
+    .update(writingReviews)
+    .set({ status: "failed", failureReason: reason, updatedAt: now })
+    .where(eq(writingReviews.id, reviewId));
+}
+
+/** Only used by tests, to age a pending claim without waiting three minutes. */
+export async function ageReviewForTesting(reviewId: string, updatedAt: Date): Promise<void> {
+  await db.update(writingReviews).set({ updatedAt }).where(eq(writingReviews.id, reviewId));
+}

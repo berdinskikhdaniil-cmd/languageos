@@ -5,8 +5,20 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { NAV_ITEMS } from "@/lib/navigation";
 
+/**
+ * Routes the navigation stays out of the way of.
+ *
+ * Writing is a text box and a keyboard on a phone screen, and a bar fixed above
+ * the keyboard would take a line of it while covering what is being typed. The
+ * writing screens carry their own way back instead.
+ */
+function isImmersive(pathname: string): boolean {
+  return pathname.startsWith("/practice/writing");
+}
+
 export function BottomNav() {
   const pathname = usePathname();
+  if (isImmersive(pathname)) return null;
 
   return (
     <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40">
@@ -41,5 +53,24 @@ export function BottomNav() {
         </ul>
       </div>
     </nav>
+  );
+}
+
+/**
+ * Keeps the last line of a screen clear of the fixed navigation, and shrinks to
+ * the safe area alone where the navigation is hidden.
+ */
+export function BottomNavSpacer() {
+  const pathname = usePathname();
+
+  return (
+    <div
+      aria-hidden
+      className={
+        isImmersive(pathname)
+          ? "h-[calc(var(--safe-bottom)+1.5rem)]"
+          : "h-[calc(var(--nav-height)+var(--safe-bottom)+1.75rem)]"
+      }
+    />
   );
 }

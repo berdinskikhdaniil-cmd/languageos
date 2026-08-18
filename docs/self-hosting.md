@@ -166,6 +166,10 @@ any error Telegram reports about it.
 | `TELEGRAM_INIT_DATA_MAX_AGE_SECONDS` | no | How long a launch payload stays acceptable. Default 3600. |
 | `AUTH_SESSION_TTL_SECONDS` | no | Lifetime of a session and its cookie. Default 2592000 (30 days). |
 | `DEFAULT_TIMEZONE` | no | Only used by the development seed (`npm run db:seed`). Real accounts confirm their own timezone during onboarding. Default `UTC`. |
+| `OPENROUTER_API_KEY` | for AI review | Key from [openrouter.ai/keys](https://openrouter.ai/keys). Server-only, and a spending credential. Without it, writing is saved but never reviewed. |
+| `OPENROUTER_MODEL` | for AI review | The model that reviews writing, as an OpenRouter slug. No default on purpose — pick one that supports JSON-schema structured output. |
+| `OPENROUTER_TIMEOUT_MS` | no | How long to wait for a review. Default 45000. Keep it below your host's function timeout. |
+| `WRITING_DAILY_REVIEW_LIMIT` | no | Pieces of writing one learner may have reviewed per day. Default 20. Retries do not count again. |
 | `ALLOW_DEV_AUTH` | no | **Local development only.** Runs requests without a session as a local development user. Needs the exact string `"true"` *and* a non-production `NODE_ENV`, so a production build ignores it. Never a fallback for a failed Telegram sign-in. |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | no | Only for the bundled Docker container. Unused if you bring your own database. |
 
@@ -183,5 +187,8 @@ Never commit real values. `.env` is gitignored, and `.env.example` is the templa
 
 - Onboarding runs once and cannot be revisited: there is no way to change your
   language, timezone or daily goal afterwards, and no way to study a second language.
+- Writing has no history screen yet: entries are stored, but nothing lists them.
+- AI cost is bounded only by a text-length cap and a per-user daily count. There is
+  no billing and no quota, so set your own spending limit at OpenRouter.
 - There is no logout, and no session rotation.
 - A study session that crosses midnight counts entirely toward the day it started on.
