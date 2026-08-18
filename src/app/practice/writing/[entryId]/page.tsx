@@ -6,7 +6,7 @@ import {
 } from "@/features/writing/components/writing-entry-view";
 import { getWritingEntry } from "@/features/writing/data/entries";
 import type { FragmentSpan } from "@/features/writing/domain/fragments";
-import { isCategory, isSeverity } from "@/features/writing/domain/review";
+import { isCategory, isSeverity, isUsableReviewContent } from "@/features/writing/domain/review";
 import { isAiConfigured } from "@/lib/ai/config";
 import { resolvePageAccess } from "@/lib/auth/page-access";
 
@@ -69,13 +69,26 @@ function toViewModel(
 
   if (!review) return { ...base, review: null };
 
-  if (review.status !== "completed" || review.summary === null || review.improvedText === null) {
+  /**
+   * A review only counts as completed if there is something in it.
+   *
+   * The last condition covers rows written before the response contract was
+   * tightened: `completed`, non-null, and holding nothing a learner can use.
+   * They render as the failure they always were, with the retry button, rather
+   * than as a confident "Nothing to fix".
+   */
+  if (
+    review.status !== "completed" ||
+    review.summary === null ||
+    review.improvedText === null ||
+    !isUsableReviewContent(review.summary, review.improvedText)
+  ) {
     return {
       ...base,
       review:
         review.status === "pending"
           ? { status: "pending" }
-          : { status: "failed", reason: review.failureReason },
+          : { status: "failed", reason: review.failureReason ?? "invalid_response" },
     };
   }
 

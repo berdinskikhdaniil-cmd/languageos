@@ -77,6 +77,50 @@ export type WritingReview = {
 };
 
 /**
+ * Whether a string carries actual language, as opposed to punctuation.
+ *
+ * Unicode-aware on purpose: the product is used in Japanese, Chinese, Arabic
+ * and Greek, so "does it contain a letter" cannot mean "does it contain a–z".
+ * `\p{L}` covers every script's letters and `\p{N}` every script's digits.
+ *
+ * This exists because of a real production review: the model returned a valid,
+ * schema-conforming object whose improved text was a single colon, and every
+ * layer accepted it — the schema had no minimum length, the validator only
+ * checked for a non-empty string, and the column only required non-null.
+ */
+const MEANINGFUL_CHARACTER = /[\p{L}\p{N}]/u;
+
+export function hasMeaningfulText(value: string): boolean {
+  return MEANINGFUL_CHARACTER.test(value);
+}
+
+/**
+ * How short an improved version may be next to the text it rewrites.
+ *
+ * A rewrite keeps the learner's meaning and length, so anything under a quarter
+ * of the original is not a rewrite — it is a model that gave up and emitted a
+ * stub. Deliberately generous: the check is here to catch abandonment, not to
+ * second-guess an editor who tightened somebody's prose.
+ */
+const MIN_IMPROVED_RATIO = 0.25;
+
+/**
+ * Whether a stored review is worth showing.
+ *
+ * Applied to rows as well as to fresh responses, because reviews written before
+ * this check existed are still in the database. One of them is the production
+ * review that prompted all of this: it stays as it is until its author asks for
+ * it again, and until then the app treats it as the failure it always was.
+ */
+export function isUsableReviewContent(
+  summary: string | null,
+  improvedText: string | null,
+): boolean {
+  if (summary === null || improvedText === null) return false;
+  return hasMeaningfulText(summary) && hasMeaningfulText(improvedText);
+}
+
+/**
  * Caps that stop one bad response from filling a table. Generous enough that a
  * real review is never truncated.
  */
@@ -106,7 +150,7 @@ export const REVIEW_JSON_SCHEMA: Record<string, unknown> = {
     improvedText: {
       type: "string",
       description:
-        "The learner's whole text rewritten correctly and naturally, keeping their meaning, voice and length.",
+        "The learner's whole text rewritten correctly and naturally, keeping their meaning, voice and length. The complete text, roughly as long as the original — never a placeholder, a single character, or a note about what you would change.",
     },
     issues: {
       type: "array",
@@ -141,72 +185,120 @@ export const REVIEW_JSON_SCHEMA: Record<string, unknown> = {
 
 export type ReviewParseResult =
   | { ok: true; value: WritingReview }
-  /** A short, non-sensitive note for the server log. Never shown to a learner. */
+  /**
+   * Where the response broke the contract — "issues[2].category", not the
+   * value that broke it. The path is enough to diagnose a provider problem
+   * from a log, and it cannot carry a learner's sentence into one.
+   */
   | { ok: false; problem: string };
 
 /**
- * Turns whatever the provider sent into a review, or says why it cannot.
+ * Turns whatever the provider sent into a review, or refuses it.
  *
- * Hand-written rather than delegated to a schema library: it is one shape, the
- * codebase already validates this way (see tracker/domain/manual-entry.ts), and
- * being explicit is what lets a single malformed issue be dropped without
- * throwing away a review that is otherwise fine.
+ * This fails closed, and that is the whole point of it.
+ *
+ * It used to be forgiving: an issue that broke the schema was dropped and the
+ * rest was presented as a finished review. That turned a partly-broken response
+ * into a confident "Nothing to fix", which is worse than no review at all — the
+ * learner is told their writing is clean when nobody actually checked it. A
+ * response that does not hold together is now refused whole, the entry stays
+ * saved, and they are offered the button again.
+ *
+ * `originalText` is the submission being reviewed. It is needed because some of
+ * the contract is relational: an improved version is a rewrite of a specific
+ * text, and "a quarter the length of it" is a thing only this function can see.
  */
-export function parseReview(data: unknown): ReviewParseResult {
-  if (!isRecord(data)) return { ok: false, problem: "response is not an object" };
+export function parseReview(data: unknown, originalText: string): ReviewParseResult {
+  if (!isRecord(data)) return { ok: false, problem: "response: not an object" };
 
   const summary = readString(data.summary, MAX_SUMMARY_CHARS);
-  if (summary === null) return { ok: false, problem: "summary is missing or not a string" };
+  if (summary === null) return { ok: false, problem: "summary: missing or not a string" };
+  if (!hasMeaningfulText(summary)) {
+    return { ok: false, problem: "summary: no letters or digits" };
+  }
 
   const improvedText = readString(data.improvedText, MAX_IMPROVED_CHARS);
   if (improvedText === null) {
-    return { ok: false, problem: "improvedText is missing or not a string" };
+    return { ok: false, problem: "improvedText: missing or not a string" };
+  }
+  if (!hasMeaningfulText(improvedText)) {
+    // The exact production failure: a schema-valid single colon.
+    return { ok: false, problem: "improvedText: no letters or digits" };
   }
 
-  if (!Array.isArray(data.issues)) return { ok: false, problem: "issues is not an array" };
+  const floor = Math.floor(originalText.trim().length * MIN_IMPROVED_RATIO);
+  if (improvedText.length < floor) {
+    // Lengths are not content, so they are safe to log.
+    return {
+      ok: false,
+      problem: `improvedText: ${improvedText.length} characters rewrites ${originalText.trim().length}`,
+    };
+  }
+
+  if (!Array.isArray(data.issues)) return { ok: false, problem: "issues: not an array" };
+  if (data.issues.length > MAX_ISSUES) {
+    return { ok: false, problem: `issues: ${data.issues.length} exceeds the ${MAX_ISSUES} allowed` };
+  }
 
   /**
-   * A malformed issue is dropped, not fatal. The model getting one enum wrong
-   * should cost the learner that line, not the whole review — but a response
-   * where *everything* is malformed is a response we did not understand.
+   * Every issue, or none of them.
+   *
+   * An empty array is a perfectly good answer — some writing has nothing
+   * concrete wrong with it. What must never happen is an array becoming empty
+   * *here*, because then "Nothing to fix" would mean "we threw the findings
+   * away", and the two are indistinguishable on screen.
    */
   const issues: ReviewIssue[] = [];
-  let rejected = 0;
 
-  for (const candidate of data.issues.slice(0, MAX_ISSUES)) {
-    const issue = parseIssue(candidate);
-    if (issue) issues.push(issue);
-    else rejected += 1;
-  }
-
-  if (issues.length === 0 && rejected > 0) {
-    return { ok: false, problem: `all ${rejected} issues were malformed` };
+  for (const [index, candidate] of data.issues.entries()) {
+    const parsed = parseIssue(candidate);
+    if (!parsed.ok) return { ok: false, problem: `issues[${index}].${parsed.problem}` };
+    issues.push(parsed.value);
   }
 
   return { ok: true, value: { summary, improvedText, issues } };
 }
 
-function parseIssue(candidate: unknown): ReviewIssue | null {
-  if (!isRecord(candidate)) return null;
+type IssueParseResult = { ok: true; value: ReviewIssue } | { ok: false; problem: string };
+
+function parseIssue(candidate: unknown): IssueParseResult {
+  if (!isRecord(candidate)) return { ok: false, problem: "not an object" };
 
   const category = candidate.category;
-  if (!isCategory(category)) return null;
+  if (!isCategory(category)) return { ok: false, problem: "category: not a known category" };
 
   const severity = candidate.severity;
-  if (!isSeverity(severity)) return null;
+  if (!isSeverity(severity)) return { ok: false, problem: "severity: not a known severity" };
 
   const originalFragment = readString(candidate.originalFragment, MAX_FIELD_CHARS);
+  if (originalFragment === null || !hasMeaningfulText(originalFragment)) {
+    return { ok: false, problem: "originalFragment: missing, not a string, or has no content" };
+  }
+
+  /**
+   * An empty suggestion is meaningful: it is how "delete this word" is
+   * expressed. It is the only field allowed to be blank.
+   */
   const suggestion = readString(candidate.suggestion, MAX_FIELD_CHARS, { allowEmpty: true });
+  if (suggestion === null) return { ok: false, problem: "suggestion: not a string" };
+
   const explanation = readString(candidate.explanation, MAX_FIELD_CHARS);
-  if (originalFragment === null || suggestion === null || explanation === null) return null;
+  if (explanation === null || !hasMeaningfulText(explanation)) {
+    return { ok: false, problem: "explanation: missing, not a string, or has no content" };
+  }
 
   const rawLabel = candidate.label;
-  const label =
-    typeof rawLabel === "string" && rawLabel.trim() !== ""
-      ? rawLabel.trim().slice(0, 80)
-      : null;
+  if (rawLabel !== null && rawLabel !== undefined && typeof rawLabel !== "string") {
+    return { ok: false, problem: "label: neither a string nor null" };
+  }
 
-  return { category, label, severity, originalFragment, suggestion, explanation };
+  const label =
+    typeof rawLabel === "string" && rawLabel.trim() !== "" ? rawLabel.trim().slice(0, 80) : null;
+
+  return {
+    ok: true,
+    value: { category, label, severity, originalFragment, suggestion, explanation },
+  };
 }
 
 export function isCategory(value: unknown): value is IssueCategory {

@@ -5,7 +5,7 @@ import { startOfLocalDay } from "@/lib/time";
 import type { WritingEntryRow } from "@/db/schema";
 import { resolveFragments } from "../domain/fragments";
 import { buildReviewPrompt } from "../domain/prompt";
-import { REVIEW_JSON_SCHEMA, parseReview } from "../domain/review";
+import { REVIEW_JSON_SCHEMA, isUsableReviewContent, parseReview } from "../domain/review";
 import { dailyReviewLimit } from "../domain/writing-entry";
 import { countReviewsSince } from "./entries";
 import { claimReview, completeReview, failReview, readReview } from "./reviews";
@@ -53,7 +53,11 @@ export async function runReview({
   }
 
   const existing = await readReview(entry.id);
-  if (existing?.status === "completed") return { ok: true, alreadyComplete: true };
+  // A completed review whose content is unusable is not a completed review; it
+  // falls through to be claimed again. See claimReview.
+  if (existing?.status === "completed" && isUsableReviewContent(existing.summary, existing.improvedText)) {
+    return { ok: true, alreadyComplete: true };
+  }
 
   // Only a genuinely new review counts against the day. Retrying an outage is
   // free, or a bad afternoon at the provider would lock the learner out.
@@ -89,11 +93,17 @@ export async function runReview({
     return { ok: false, reason: completion.reason };
   }
 
-  const parsed = parseReview(completion.data);
+  const parsed = parseReview(completion.data, entry.originalText);
   if (!parsed.ok) {
-    // The provider answered with JSON we cannot use. Logged as a shape problem,
-    // never with the content itself.
-    console.error("[writing] unusable review payload:", parsed.problem);
+    /**
+     * Enough to diagnose a provider problem, and nothing more: which field
+     * broke the contract, which rows it concerns, and which model answered.
+     * Never the submission, never the response body, never a credential.
+     */
+    console.error(
+      `[writing-review] invalid provider response: ${parsed.problem}` +
+        ` (entry ${entry.id}, review ${reviewId}, model ${completion.model})`,
+    );
     await failReview({ reviewId, reason: "invalid_response", now: new Date() });
     return { ok: false, reason: "invalid_response" };
   }

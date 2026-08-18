@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { db } from "@/db";
 import { writingEntries, writingIssues, writingReviews } from "@/db/schema";
 import type { OnboardedUser } from "@/lib/auth/current-user";
+import { isUsableReviewContent } from "../domain/review";
 import { createTestAccount, deleteTestAccount, type TestAccount } from "@/test/db-fixtures";
 import { createWritingEntry, getWritingEntry, saveRewrite } from "./entries";
 import { runReview } from "./review-runner";
@@ -468,6 +469,146 @@ describe("the rewrite", () => {
     const detail = await getWritingEntry(entry.id, alice.id);
     expect(detail?.entry.revisedText).toBe("A better attempt at fixing it.");
     expect(detail?.entry.originalText).toBe(ORIGINAL);
+  });
+});
+
+describe("the production failure of 18 August 2026", () => {
+  /**
+   * Entry 72bb3fb4, review a8babf63: 72 output tokens, a summary naming a
+   * past-tense problem, an improved text one byte long, and no issues. It was
+   * stored as `completed` and the screen said "Nothing to fix".
+   */
+  const DEGENERATE = {
+    summary: "Nice simple story! The main thing to work on is past tense consistency throughout.",
+    improvedText: ":",
+    issues: [],
+  };
+
+  it("never becomes a completed review", async () => {
+    fetchMock.mockImplementation(async () => providerAnswers(DEGENERATE));
+    const entry = await entryFor(alice);
+
+    const outcome = await runReview({ entry, user: asUser(alice, "Alice") });
+    expect(outcome).toEqual({ ok: false, reason: "invalid_response" });
+
+    const detail = await getWritingEntry(entry.id, alice.id);
+    // What the learner actually cares about: their writing is still here.
+    expect(detail?.entry.originalText).toBe(ORIGINAL);
+    expect(detail?.review).toMatchObject({ status: "failed", failureReason: "invalid_response" });
+    expect(detail?.review?.improvedText).toBeNull();
+    expect(detail?.issues).toEqual([]);
+  });
+
+  it("leaves the entry retryable, and a good response then replaces it", async () => {
+    fetchMock.mockImplementation(async () => providerAnswers(DEGENERATE));
+    const entry = await entryFor(alice);
+    await runReview({ entry, user: asUser(alice, "Alice") });
+
+    fetchMock.mockImplementation(async () => providerAnswers());
+    expect(await runReview({ entry, user: asUser(alice, "Alice") })).toEqual({
+      ok: true,
+      alreadyComplete: false,
+    });
+
+    const detail = await getWritingEntry(entry.id, alice.id);
+    expect(detail?.review).toMatchObject({
+      status: "completed",
+      improvedText: REVIEW_PAYLOAD.improvedText,
+      failureReason: null,
+    });
+    expect(detail?.issues).toHaveLength(3);
+  });
+
+  it("rejects a response where one issue is malformed, rather than dropping it", async () => {
+    // The old behaviour kept the good issues and presented the result as
+    // finished. Two valid findings are not worth a review the learner cannot
+    // trust.
+    fetchMock.mockImplementation(async () =>
+      providerAnswers({
+        ...REVIEW_PAYLOAD,
+        issues: [
+          REVIEW_PAYLOAD.issues[0],
+          { ...REVIEW_PAYLOAD.issues[1], category: "articles" },
+          REVIEW_PAYLOAD.issues[2],
+        ],
+      }),
+    );
+
+    const entry = await entryFor(alice);
+    expect(await runReview({ entry, user: asUser(alice, "Alice") })).toEqual({
+      ok: false,
+      reason: "invalid_response",
+    });
+
+    const detail = await getWritingEntry(entry.id, alice.id);
+    expect(detail?.review?.status).toBe("failed");
+    // Not one issue was persisted from a response we did not trust.
+    expect(detail?.issues).toEqual([]);
+  });
+});
+
+describe("a bad review already sitting in the database", () => {
+  /**
+   * The real one in production cannot be reviewed again by the old rules: it
+   * is marked `completed`, so every path treats it as finished. Rather than
+   * migrating over it, the app now recognises an unusable row and lets its
+   * author ask again.
+   */
+  async function storeUnusableCompletedReview(entryId: string) {
+    await db.insert(writingReviews).values({
+      entryId,
+      model: "anthropic/claude-sonnet-5",
+      status: "completed",
+      summary: "Nice simple story! The main thing to work on is past tense consistency.",
+      improvedText: ":",
+      inputTokens: 1499,
+      outputTokens: 72,
+    });
+  }
+
+  it("is offered to the learner as a failure, not as a finished review", async () => {
+    const entry = await entryFor(alice);
+    await storeUnusableCompletedReview(entry.id);
+
+    const detail = await getWritingEntry(entry.id, alice.id);
+    // The row is untouched — nothing rewrote or deleted it.
+    expect(detail?.review).toMatchObject({ status: "completed", improvedText: ":" });
+    // But it is not usable, and the app knows it.
+    expect(isUsableReviewContent(detail!.review!.summary, detail!.review!.improvedText)).toBe(
+      false,
+    );
+  });
+
+  it("can be reviewed again, and a good response takes its place", async () => {
+    const entry = await entryFor(alice);
+    await storeUnusableCompletedReview(entry.id);
+
+    expect(await runReview({ entry, user: asUser(alice, "Alice") })).toEqual({
+      ok: true,
+      alreadyComplete: false,
+    });
+
+    const detail = await getWritingEntry(entry.id, alice.id);
+    expect(detail?.review).toMatchObject({
+      status: "completed",
+      improvedText: REVIEW_PAYLOAD.improvedText,
+    });
+    expect(detail?.issues).toHaveLength(3);
+    // Still one review row: the bad one was retaken, not duplicated.
+    const reviews = await db.select().from(writingReviews).where(eq(writingReviews.entryId, entry.id));
+    expect(reviews).toHaveLength(1);
+  });
+
+  it("is left alone once it holds a real review again", async () => {
+    const entry = await entryFor(alice);
+    await runReview({ entry, user: asUser(alice, "Alice") });
+    fetchMock.mockClear();
+
+    expect(await runReview({ entry, user: asUser(alice, "Alice") })).toEqual({
+      ok: true,
+      alreadyComplete: true,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

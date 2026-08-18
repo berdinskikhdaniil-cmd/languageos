@@ -1,9 +1,9 @@
-import { and, eq, lt, or } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { writingIssues, writingReviews } from "@/db/schema";
 import type { WritingReviewRow } from "@/db/schema";
 import type { FragmentSpan } from "../domain/fragments";
-import type { ReviewIssue, WritingReview } from "../domain/review";
+import { isUsableReviewContent, type ReviewIssue, type WritingReview } from "../domain/review";
 
 /**
  * The review's lifecycle, and the lock that keeps it from happening twice.
@@ -56,23 +56,52 @@ export async function claimReview({
     throw new Error("The review could not be claimed.");
   }
 
-  if (existing.status === "completed") return { status: "completed", review: existing };
+  /**
+   * A finished review is only finished if there is something in it.
+   *
+   * Rows written before the response contract was tightened can be `completed`
+   * and still hold nothing worth reading — the production review that exposed
+   * this held a single colon. Rather than migrating over them, which would
+   * quietly rewrite somebody's history, the app recognises them for what they
+   * are and lets their author ask again.
+   */
+  const usable = isUsableReviewContent(existing.summary, existing.improvedText);
+  if (existing.status === "completed" && usable) {
+    return { status: "completed", review: existing };
+  }
 
-  // A failed attempt, or a pending one nobody is coming back to, is retaken.
+  const stale = existing.updatedAt.getTime() < now.getTime() - STALE_PENDING_MS;
+  const retakeable =
+    existing.status === "failed" ||
+    (existing.status === "pending" && stale) ||
+    (existing.status === "completed" && !usable);
+
+  if (!retakeable) return { status: "processing", review: existing };
+
+  /**
+   * The status we read is the lock.
+   *
+   * Two requests that both decided to retake issue the same update; the first
+   * moves the row to `pending`, the second no longer matches and is told the
+   * work is under way. Deliberately not a timestamp comparison: Postgres keeps
+   * microseconds and a JavaScript Date does not, so a row whose `updated_at`
+   * came from a column default would never match itself again.
+   *
+   * The residual race is a review that completes properly between our read and
+   * our update, which we would then redo. It costs one extra call and cannot
+   * corrupt anything, and it needs a window of microseconds to happen at all.
+   */
   const [retaken] = await db
     .update(writingReviews)
     .set({ status: "pending", model, failureReason: null, updatedAt: now })
     .where(
-      and(
-        eq(writingReviews.id, existing.id),
-        or(
-          eq(writingReviews.status, "failed"),
-          and(
+      existing.status === "pending"
+        ? and(
+            eq(writingReviews.id, existing.id),
             eq(writingReviews.status, "pending"),
             lt(writingReviews.updatedAt, new Date(now.getTime() - STALE_PENDING_MS)),
-          ),
-        ),
-      ),
+          )
+        : and(eq(writingReviews.id, existing.id), eq(writingReviews.status, existing.status)),
     )
     .returning();
 

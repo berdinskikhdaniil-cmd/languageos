@@ -19,100 +19,142 @@ const VALID_ISSUE = {
   explanation: "Yesterday needs the past tense.",
 };
 
+/** The submission every payload below is a review *of*. */
+const SUBMISSION =
+  "Yesterday I go to the city center with my girlfriend. We buyed two breads and decided walk in the park. The weather was nice and I am very happy.";
+
 const VALID = {
   summary: "Clear and easy to follow. Watch your past tenses.",
-  improvedText: "I went to the shop yesterday.",
+  improvedText:
+    "Yesterday I went to the city centre with my girlfriend. We bought two loaves of bread and decided to walk in the park. The weather was nice and I was very happy.",
   issues: [VALID_ISSUE],
 };
 
+/** Shorthand: every payload is validated against the same submission. */
+const check = (data: unknown) => parseReview(data, SUBMISSION);
+
 describe("a well-formed response", () => {
   it("is accepted whole", () => {
-    const result = parseReview(VALID);
+    const result = check(VALID);
 
     expect(result).toEqual({
       ok: true,
       value: {
-        summary: "Clear and easy to follow. Watch your past tenses.",
-        improvedText: "I went to the shop yesterday.",
+        summary: VALID.summary,
+        improvedText: VALID.improvedText,
         issues: [VALID_ISSUE],
       },
     });
   });
 
   it("accepts a review with nothing to fix", () => {
-    const result = parseReview({ ...VALID, issues: [] });
+    const result = check({ ...VALID, issues: [] });
     expect(result).toMatchObject({ ok: true, value: { issues: [] } });
   });
 
   it("accepts a null label", () => {
-    const result = parseReview({ ...VALID, issues: [{ ...VALID_ISSUE, label: null }] });
+    const result = check({ ...VALID, issues: [{ ...VALID_ISSUE, label: null }] });
     expect(result).toMatchObject({ ok: true });
     expect(result.ok && result.value.issues[0].label).toBeNull();
   });
 
   it("treats a blank label as no label rather than an empty one", () => {
-    const result = parseReview({ ...VALID, issues: [{ ...VALID_ISSUE, label: "   " }] });
+    const result = check({ ...VALID, issues: [{ ...VALID_ISSUE, label: "   " }] });
     expect(result.ok && result.value.issues[0].label).toBeNull();
   });
 });
 
 describe("a response missing what the screen needs", () => {
   it("is rejected without a summary", () => {
-    expect(parseReview({ ...VALID, summary: undefined })).toMatchObject({ ok: false });
-    expect(parseReview({ ...VALID, summary: "" })).toMatchObject({ ok: false });
-    expect(parseReview({ ...VALID, summary: 42 })).toMatchObject({ ok: false });
+    expect(check({ ...VALID, summary: undefined })).toMatchObject({ ok: false });
+    expect(check({ ...VALID, summary: "" })).toMatchObject({ ok: false });
+    expect(check({ ...VALID, summary: 42 })).toMatchObject({ ok: false });
   });
 
   it("is rejected without an improved version", () => {
-    expect(parseReview({ ...VALID, improvedText: undefined })).toMatchObject({ ok: false });
-    expect(parseReview({ ...VALID, improvedText: null })).toMatchObject({ ok: false });
+    expect(check({ ...VALID, improvedText: undefined })).toMatchObject({ ok: false });
+    expect(check({ ...VALID, improvedText: null })).toMatchObject({ ok: false });
   });
 
   it("is rejected when issues is not a list", () => {
-    expect(parseReview({ ...VALID, issues: "none" })).toMatchObject({ ok: false });
-    expect(parseReview({ ...VALID, issues: undefined })).toMatchObject({ ok: false });
+    expect(check({ ...VALID, issues: "none" })).toMatchObject({ ok: false });
+    expect(check({ ...VALID, issues: undefined })).toMatchObject({ ok: false });
   });
 
   it("is rejected when it is not an object at all", () => {
     for (const value of [null, undefined, "text", 7, [], true]) {
-      expect(parseReview(value)).toMatchObject({ ok: false });
+      expect(check(value)).toMatchObject({ ok: false });
     }
   });
 });
 
-describe("an invalid enum", () => {
-  it("drops that issue rather than the review", () => {
-    const result = parseReview({
+describe("an invalid issue", () => {
+  it("takes the whole review down with it", () => {
+    /**
+     * The behaviour this replaces dropped the bad issue and kept the rest,
+     * which let a partly-broken response arrive on screen as a finished
+     * review. Being told your writing is clean when nobody checked it is
+     * worse than being told the review failed.
+     */
+    const result = check({
       ...VALID,
       issues: [{ ...VALID_ISSUE, category: "articles" }, VALID_ISSUE],
     });
 
-    expect(result).toMatchObject({ ok: true });
-    expect(result.ok && result.value.issues).toHaveLength(1);
-  });
-
-  it("drops an unknown severity too", () => {
-    const result = parseReview({
-      ...VALID,
-      issues: [{ ...VALID_ISSUE, severity: "critical" }, VALID_ISSUE],
-    });
-    expect(result.ok && result.value.issues).toHaveLength(1);
-  });
-
-  it("gives up when every single issue is malformed", () => {
-    // A response where nothing parsed is a response we did not understand,
-    // and pretending it was a clean review would be a lie.
-    const result = parseReview({
-      ...VALID,
-      issues: [{ ...VALID_ISSUE, category: "nope" }, { nonsense: true }],
-    });
     expect(result).toMatchObject({ ok: false });
+    expect(result.ok === false && result.problem).toBe("issues[0].category: not a known category");
+  });
+
+  it("is refused even when every other issue is perfect", () => {
+    const result = check({
+      ...VALID,
+      issues: [VALID_ISSUE, VALID_ISSUE, { ...VALID_ISSUE, severity: "critical" }],
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.ok === false && result.problem).toBe("issues[2].severity: not a known severity");
+  });
+
+  it("names the field that broke, and never the value that broke it", () => {
+    const cases: [unknown, string][] = [
+      [{ ...VALID_ISSUE, category: "articles" }, "issues[0].category: not a known category"],
+      [{ ...VALID_ISSUE, severity: 3 }, "issues[0].severity: not a known severity"],
+      [
+        { ...VALID_ISSUE, originalFragment: "   " },
+        "issues[0].originalFragment: missing, not a string, or has no content",
+      ],
+      [{ ...VALID_ISSUE, suggestion: null }, "issues[0].suggestion: not a string"],
+      [
+        { ...VALID_ISSUE, explanation: ":" },
+        "issues[0].explanation: missing, not a string, or has no content",
+      ],
+      [{ ...VALID_ISSUE, label: 7 }, "issues[0].label: neither a string nor null"],
+      ["not an object", "issues[0].not an object"],
+    ];
+
+    for (const [issue, problem] of cases) {
+      const result = check({ ...VALID, issues: [issue] });
+      expect(result).toMatchObject({ ok: false, problem });
+    }
+  });
+
+  it("never lets a rejected issue turn into an empty list", () => {
+    // The false-success state, stated directly.
+    const result = check({ ...VALID, issues: [{ nonsense: true }] });
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("no issues at all", () => {
+  it("is accepted when the provider genuinely said so", () => {
+    const result = check({ ...VALID, issues: [] });
+    expect(result).toMatchObject({ ok: true, value: { issues: [] } });
   });
 });
 
 describe("unexpected extras", () => {
   it("ignores fields we did not ask for", () => {
-    const result = parseReview({
+    const result = check({
       ...VALID,
       score: 72,
       cefr: "B1",
@@ -136,8 +178,87 @@ describe("unexpected extras", () => {
   });
 
   it("keeps an issue whose suggestion is empty — deleting a word is a suggestion", () => {
-    const result = parseReview({ ...VALID, issues: [{ ...VALID_ISSUE, suggestion: "" }] });
+    const result = check({ ...VALID, issues: [{ ...VALID_ISSUE, suggestion: "" }] });
     expect(result.ok && result.value.issues[0].suggestion).toBe("");
+  });
+});
+
+describe("the production failure of 18 August 2026", () => {
+  /**
+   * Reconstructed from the row itself: entry 72bb3fb4, review a8babf63,
+   * status completed, 72 output tokens, improved_text one byte long (0x3a),
+   * zero issue rows. The model wrote a summary that named a past-tense
+   * problem and then gave up, and every layer waved it through — the schema
+   * has no minimum length, the validator only asked for a non-empty string,
+   * and the column only required non-null. The screen said "Nothing to fix".
+   */
+  const PRODUCTION_PAYLOAD = {
+    summary:
+      "Nice simple story! The main thing to work on is past tense consistency throughout.",
+    improvedText: ":",
+    issues: [],
+  };
+
+  it("is refused now, so it can never become a completed review again", () => {
+    const result = check(PRODUCTION_PAYLOAD);
+
+    expect(result).toMatchObject({
+      ok: false,
+      problem: "improvedText: no letters or digits",
+    });
+  });
+
+  it("would have been accepted before the fix", () => {
+    // The shape is schema-valid: object, three keys, right types, right names.
+    // Nothing but a content rule can catch it.
+    expect(typeof PRODUCTION_PAYLOAD.summary).toBe("string");
+    expect(typeof PRODUCTION_PAYLOAD.improvedText).toBe("string");
+    expect(PRODUCTION_PAYLOAD.improvedText.length).toBeGreaterThan(0);
+    expect(Array.isArray(PRODUCTION_PAYLOAD.issues)).toBe(true);
+  });
+
+  it("is refused in every other punctuation-only shape too", () => {
+    for (const improvedText of [":", ".", "-", "—", "   ", "...", "!?", "\n\t", "***"]) {
+      expect(check({ ...VALID, improvedText })).toMatchObject({ ok: false });
+    }
+  });
+
+  it("is refused when the model gives up with a short stub instead", () => {
+    // A stub with letters passes the meaningfulness rule, so length relative
+    // to the submission is what catches this one.
+    const result = check({ ...VALID, improvedText: "Good.", issues: [] });
+    expect(result).toMatchObject({ ok: false });
+    expect(result.ok === false && result.problem).toContain("improvedText:");
+  });
+
+  it("refuses a punctuation-only summary for the same reason", () => {
+    expect(check({ ...VALID, summary: "—" })).toMatchObject({
+      ok: false,
+      problem: "summary: no letters or digits",
+    });
+  });
+});
+
+describe("a rewrite in a language without a Latin alphabet", () => {
+  it("is accepted — the content rule is Unicode-aware, not English-only", () => {
+    const submissions: [string, string][] = [
+      ["私は昨日学校に行きました。とても楽しかったです。", "私は昨日学校へ行きました。とても楽しかったです。"],
+      ["我昨天去了商店，买了面包和奶酪。", "我昨天去了商店，买了面包和奶酪。"],
+      ["أنا أذهب إلى المدرسة كل يوم مع أختي.", "أنا أذهب إلى المدرسة كل يوم مع أختي."],
+      ["Εγώ πηγαίνω στο σχολείο κάθε μέρα.", "Εγώ πηγαίνω στο σχολείο κάθε μέρα."],
+      ["Вчера я ходил в магазин и купил хлеб.", "Вчера я ходил в магазин и купил хлеб."],
+    ];
+
+    for (const [submission, improvedText] of submissions) {
+      const result = parseReview({ summary: "良い文章です。", improvedText, issues: [] }, submission);
+      expect(result).toMatchObject({ ok: true });
+    }
+  });
+
+  it("accepts a rewrite whose only content is digits", () => {
+    expect(check({ ...VALID, improvedText: "1234567890123456789012345678901234567890" })).toMatchObject({
+      ok: true,
+    });
   });
 });
 
