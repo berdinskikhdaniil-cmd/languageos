@@ -44,6 +44,33 @@ client posts Telegram's signed `initData` once to `/api/auth/telegram`; the
 server verifies it, finds or creates the user, and sets an HttpOnly session
 cookie. Nothing after that sends initData again.
 
+### The Telegram bot
+
+Two explicit scripts; neither runs during `npm run dev` or a build.
+
+```bash
+npm run telegram:check      # verify TELEGRAM_BOT_TOKEN via getMe, report what is configured
+npm run telegram:configure  # apply the command list, menu button and webhook
+```
+
+They need `TELEGRAM_BOT_TOKEN`, and for anything beyond the command list also
+`TELEGRAM_WEBAPP_URL` (this app's own public URL) and `TELEGRAM_WEBHOOK_SECRET`.
+
+`telegram:configure` is idempotent — each call overwrites, so running it twice
+leaves the same state. It sets `/start` and `/help`, points the chat menu button
+at the Mini App, and registers `POST /api/telegram/webhook` (the Mini App URL with
+that path appended) together with the secret. Telegram echoes the secret in the
+`X-Telegram-Bot-Api-Secret-Token` header, and the route refuses anything else.
+
+A localhost `TELEGRAM_WEBAPP_URL` is fine for development, but Telegram cannot
+open or call it: the menu button and the webhook are skipped with a reason until
+the app is deployed behind a public HTTPS URL.
+
+The bot itself is only a door. `/start` replies with one line and an "Open
+Language OS" Web App button, `/help` says the same in fewer words, and everything
+else — ordinary text, voice, group chats — is left alone. It never signs anyone
+in: the Mini App's `initData` flow below is the only path to a session.
+
 ### Database commands
 
 ```bash
@@ -102,7 +129,10 @@ reads it back.
 Still demo content, marked as such in `src/features/dashboard/demo-analytics.ts`:
 the coach recommendation and the errors-per-1000-words trend.
 
-Not built yet: the Telegram bot itself (commands, `/start`, webhooks), AI review,
+**The bot is a transport.** A secret-verified webhook, `/start`, `/help` and a
+button into the Mini App, plus the scripts that configure them.
+
+Not built yet: logging time by message or voice, reminders, AI review,
 speech-to-text, vocabulary and SRS, onboarding, and the progress engine.
 
 ## Layout
@@ -120,10 +150,11 @@ src/
     tracker/    domain rules, data access, server actions, tracker UI
   lib/
     auth/       identity, sessions, environment gating
-    telegram/   the WebApp bridge adapter and the initData validator
+    telegram/   the WebApp bridge, the initData validator, the Bot API client
+                and the update handler
     …           time zones, formatting, navigation
 drizzle/        generated migrations
-scripts/        one-off development scripts (seed)
+scripts/        explicit scripts (seed, Telegram setup)
 docs/           product handoff, design rules
 ```
 

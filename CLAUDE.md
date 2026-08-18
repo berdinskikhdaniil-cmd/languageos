@@ -19,8 +19,9 @@ it without an explicit reason from the user.
 
 ## 2. Product architecture
 
-**Telegram Bot** — a future fast-interaction layer: quick logging, start/stop,
-links, text, voice, reminders, launching the Mini App. *Not built yet.*
+**Telegram Bot** — the fast-interaction layer. Today it is a transport only: a
+secure webhook, `/start` and `/help`, and a button that opens the Mini App. Quick
+logging, start/stop, voice and reminders are *not built yet*.
 
 **Telegram Mini App** — the main interface: home/dashboard, tracker, practice,
 progress, library/vocabulary, writing, speaking, mistakes, settings. This repo is
@@ -41,6 +42,8 @@ Versions come from `package.json` — check there rather than assuming.
 - Telegram Web App bridge, loaded from `telegram.org` in the root layout
 - Auth: Telegram `initData` verified server-side, then our own opaque session in an
   HttpOnly cookie — no UI framework, no AI provider, no second ORM
+- Telegram Bot API: a small typed client over `fetch` in `src/lib/telegram/bot-api.ts`
+  — no bot framework; add one only when a real need appears
 
 ## 4. What exists today
 
@@ -48,13 +51,16 @@ Working: mobile-first dashboard shell; persistent tracker on PostgreSQL; timed
 sessions (start / stop / discard) and manual entries; an explicit local development
 identity; the Telegram Mini App bridge; server-side `initData` validation; internal
 opaque auth sessions; per-user data isolation; this-week and today analytics
-computed from real rows.
+computed from real rows; a minimal Telegram bot layer — a secret-verified webhook,
+`/start` and `/help`, an "Open Language OS" Web App button, and explicit scripts that
+configure the bot's commands, menu button and webhook.
 
 **Demo content, not functionality** — marked as such in
 `src/features/dashboard/demo-analytics.ts`: the Coach recommendation and the
 Errors / 1000 words trend. Never present either as a working feature. Not built at
 all: Speaking AI, Writing review AI, vocabulary and SRS, the mistake engine, the
-Telegram bot, onboarding, notifications, payments.
+onboarding, notifications, payments. The bot logs nothing and parses no
+natural language: it answers two commands and stays quiet otherwise.
 
 ## 5. Architecture invariants
 
@@ -140,7 +146,8 @@ src/app/              routes, root layout, design tokens, the auth endpoint
 src/components/       auth screens, layout shell, shared ui primitives
 src/db/               Drizzle schema, connection pool, env reading
 src/features/<name>/  domain/ (pure rules) · data/ (queries) · actions.ts · components/
-src/lib/              auth/ (identity, sessions) · telegram/ (bridge, validator) · time, format
+src/lib/              auth/ (identity, sessions) · telegram/ (bridge, validator, bot
+                      API client, update handler) · time, format
 drizzle/              generated migrations
 scripts/              explicit development scripts
 ```
@@ -211,8 +218,12 @@ say which you used.
 
 ## 14. Known limitations
 
-- The app has not been launched from a real Telegram client end to end.
-- The Telegram bot does not exist yet.
+- The app has not been launched from a real Telegram client end to end, and the
+  bot's webhook has never received a real Telegram delivery — both wait on a public
+  HTTPS URL in `TELEGRAM_WEBAPP_URL`. Until one exists, `npm run telegram:configure`
+  sets the commands and skips the menu button and the webhook, with a reason.
+- The bot is a door, not a feature surface: no logging by message, no voice, no
+  reminders, and `/start` payloads are parsed but unused.
 - A new user's first language is hardcoded to English — a temporary product decision
   until onboarding exists, not an architectural rule.
 - Timezone comes from `DEFAULT_TIMEZONE`; users cannot set their own yet.
