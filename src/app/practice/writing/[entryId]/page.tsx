@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import {
-  WritingEntryView,
-  type WritingEntryViewModel,
-} from "@/features/writing/components/writing-entry-view";
+import { WritingEntryView } from "@/features/writing/components/writing-entry-view";
 import { getWritingEntry } from "@/features/writing/data/entries";
-import type { FragmentSpan } from "@/features/writing/domain/fragments";
-import { isCategory, isSeverity, isUsableReviewContent } from "@/features/writing/domain/review";
+import { buildEntryView } from "@/features/writing/domain/review-view";
 import { isAiConfigured } from "@/lib/ai/config";
 import { resolvePageAccess } from "@/lib/auth/page-access";
 
@@ -45,87 +41,14 @@ export default async function WritingEntryPage({ params }: PageProps<"/practice/
   const detail = await getWritingEntry(entryId, access.user.id);
   if (!detail) notFound();
 
-  // An installation with no AI configured should say so, rather than leave the
-  // learner tapping a button that can never work.
-  const unreviewedReason = isAiConfigured() ? null : "not_configured";
-
-  return <WritingEntryView entry={toViewModel(detail, unreviewedReason)} />;
-}
-
-function toViewModel(
-  detail: NonNullable<Awaited<ReturnType<typeof getWritingEntry>>>,
-  unreviewedReason: string | null,
-): WritingEntryViewModel {
-  const { entry, review, issues } = detail;
-
-  const base = {
-    id: entry.id,
-    type: entry.type,
-    originalText: entry.originalText,
-    revisedText: entry.revisedText,
-    wordCount: entry.wordCount,
-    unreviewedReason,
-  };
-
-  if (!review) return { ...base, review: null };
-
-  /**
-   * A review only counts as completed if there is something in it.
-   *
-   * The last condition covers rows written before the response contract was
-   * tightened: `completed`, non-null, and holding nothing a learner can use.
-   * They render as the failure they always were, with the retry button, rather
-   * than as a confident "Nothing to fix".
-   */
-  if (
-    review.status !== "completed" ||
-    review.summary === null ||
-    review.improvedText === null ||
-    !isUsableReviewContent(review.summary, review.improvedText)
-  ) {
-    return {
-      ...base,
-      review:
-        review.status === "pending"
-          ? { status: "pending" }
-          : { status: "failed", reason: review.failureReason ?? "invalid_response" },
-    };
-  }
-
-  /**
-   * The enum values come out of Postgres columns whose type only permits them,
-   * so these guards never fire in practice. They are here because the view
-   * model is what the highlighting slices text against, and a surprise there
-   * should drop one issue rather than break the page.
-   */
-  const display = issues.filter(
-    (issue) => isCategory(issue.category) && isSeverity(issue.severity),
+  return (
+    <WritingEntryView
+      entry={buildEntryView({
+        ...detail,
+        // An installation with no AI configured should say so, rather than
+        // leave the learner tapping a button that can never work.
+        unreviewedReason: isAiConfigured() ? null : "not_configured",
+      })}
+    />
   );
-
-  const spans: { span: FragmentSpan; issueIndex: number }[] = [];
-  display.forEach((issue, index) => {
-    if (issue.startOffset !== null && issue.endOffset !== null) {
-      spans.push({ span: { start: issue.startOffset, end: issue.endOffset }, issueIndex: index });
-    }
-  });
-
-  return {
-    ...base,
-    review: {
-      status: "completed",
-      summary: review.summary,
-      improvedText: review.improvedText,
-      issues: display.map((issue) => ({
-        id: issue.id,
-        category: issue.category,
-        label: issue.label,
-        severity: issue.severity,
-        originalFragment: issue.originalFragment,
-        suggestion: issue.suggestion,
-        explanation: issue.explanation,
-        highlighted: issue.startOffset !== null,
-      })),
-      spans,
-    },
-  };
 }

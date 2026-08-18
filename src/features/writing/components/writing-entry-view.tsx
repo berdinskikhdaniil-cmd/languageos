@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FieldError } from "@/components/ui/field-error";
 import { retryReviewAction, saveRewriteAction } from "../actions";
-import type { FragmentSpan } from "../domain/fragments";
 import { reviewFailureMessage } from "../domain/failures";
-import { WRITING_TYPE_LABELS, MAX_WRITING_CHARS, MIN_WRITING_CHARS, type WritingType } from "../domain/writing-entry";
+import { WRITING_TYPE_LABELS, MAX_WRITING_CHARS, MIN_WRITING_CHARS } from "../domain/writing-entry";
+import type { WritingEntryView as WritingEntryViewModel } from "../domain/review-view";
 import { HighlightedText } from "./highlighted-text";
-import { IssueList, type DisplayIssue } from "./issue-list";
+import { IssueDetail } from "./issue-detail";
+import { IssueDetailPanel } from "./issue-detail-panel";
 
 /**
  * One piece of writing, and whatever has happened to it.
@@ -19,31 +20,6 @@ import { IssueList, type DisplayIssue } from "./issue-list";
  * none of them navigates away, so the review the learner is correcting from
  * stays a scroll away rather than a back button away.
  */
-
-export type WritingEntryViewModel = {
-  id: string;
-  type: WritingType;
-  originalText: string;
-  revisedText: string | null;
-  wordCount: number;
-  /**
-   * Why there is no review yet, when the database holds no failed row to
-   * explain it — an installation with no AI configured, most usefully. Resolved
-   * on the server, because the browser cannot see the environment.
-   */
-  unreviewedReason: string | null;
-  review:
-    | {
-        status: "completed";
-        summary: string;
-        improvedText: string;
-        issues: DisplayIssue[];
-        spans: { span: FragmentSpan; issueIndex: number }[];
-      }
-    | { status: "pending" }
-    | { status: "failed"; reason: string | null }
-    | null;
-};
 
 export function WritingEntryView({ entry }: { entry: WritingEntryViewModel }) {
   const [rewriting, setRewriting] = useState(false);
@@ -101,6 +77,16 @@ function CompletedReview({
 }) {
   const [selected, setSelected] = useState<number | null>(null);
 
+  const highlighted = new Set(review.spans.map((span) => span.issueIndex));
+  /**
+   * Everything that could not be attached to a phrase: a fragment the model
+   * paraphrased, one that appears twice, one that would have overlapped
+   * another. Still real feedback, so it is shown — just not inline.
+   */
+  const unplaced = review.issues.filter((_, index) => !highlighted.has(index));
+
+  const selectedIssue = selected === null ? null : (review.issues[selected] ?? null);
+
   return (
     <>
       <section>
@@ -118,30 +104,38 @@ function CompletedReview({
             onSelect={setSelected}
           />
         </div>
+
         {review.spans.length > 0 ? (
-          <p className="mt-3 text-[0.8125rem] leading-snug text-faint">
-            Tap anything underlined to jump to what it is about.
+          <p className="mt-3.5 text-[0.8125rem] leading-snug text-faint">
+            Tap a highlighted phrase to see the correction.
           </p>
         ) : null}
       </section>
 
-      {review.issues.length > 0 ? (
+      {unplaced.length > 0 ? (
         <section>
-          <h2 className="text-[0.8125rem] font-medium text-muted">
-            {review.issues.length === 1 ? "One thing to fix" : `${review.issues.length} things to fix`}
-          </h2>
-          <div className="mt-2.5">
-            <IssueList issues={review.issues} selectedIndex={selected} onSelect={setSelected} />
-          </div>
+          <h2 className="text-[0.8125rem] font-medium text-muted">Other feedback</h2>
+          <p className="mt-1.5 text-[0.8125rem] leading-snug text-faint">
+            {unplaced.length === 1 ? "This one" : "These"} could not be pinned to an exact phrase.
+          </p>
+          <ul className="mt-4 flex flex-col gap-5">
+            {unplaced.map((issue) => (
+              <li key={issue.id}>
+                <IssueDetail issue={issue} />
+              </li>
+            ))}
+          </ul>
         </section>
-      ) : (
+      ) : null}
+
+      {review.issues.length === 0 ? (
         <section>
           <h2 className="text-[0.8125rem] font-medium text-muted">Nothing to fix</h2>
           <p className="mt-2.5 text-[0.9375rem] leading-[1.5] text-muted">
             No concrete mistakes were found in this one.
           </p>
         </section>
-      )}
+      ) : null}
 
       <section>
         <h2 className="text-[0.8125rem] font-medium text-muted">Better version</h2>
@@ -167,6 +161,14 @@ function CompletedReview({
           </p>
         </section>
       )}
+
+      {/*
+        Room to scroll the last control clear of the panel. Only while it is
+        open, and only below everything else, so nothing above it ever moves.
+      */}
+      {selectedIssue ? <div aria-hidden className="h-56" /> : null}
+
+      <IssueDetailPanel issue={selectedIssue} onClose={() => setSelected(null)} />
     </>
   );
 }

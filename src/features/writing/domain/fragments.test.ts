@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveFragment, resolveFragments, splitByHighlights } from "./fragments";
+import {
+  resolveFragment,
+  resolveFragments,
+  selectRenderableSpans,
+  splitByHighlights,
+} from "./fragments";
 
 describe("a fragment that appears once", () => {
   it("is placed exactly", () => {
@@ -135,5 +140,57 @@ describe("splitting text for display", () => {
   it("keeps every character when the whole text is one highlight", () => {
     const parts = splitByHighlights("all", [{ span: { start: 0, end: 3 }, issueIndex: 0 }]);
     expect(parts).toEqual([{ kind: "highlight", text: "all", issueIndex: 0 }]);
+  });
+});
+
+describe("choosing which stored spans can be drawn", () => {
+  const text = "I buyed bread and go home.";
+
+  it("accepts spans that do not touch each other", () => {
+    expect(
+      selectRenderableSpans(text, [
+        { span: { start: 2, end: 7 } },
+        { span: { start: 18, end: 25 } },
+      ]),
+    ).toEqual([true, true]);
+  });
+
+  it("refuses the second of two that overlap", () => {
+    // Nesting one interactive mark inside another produces markup no browser
+    // and no screen reader can make sense of.
+    expect(
+      selectRenderableSpans(text, [
+        { span: { start: 0, end: 13 } },
+        { span: { start: 2, end: 7 } },
+      ]),
+    ).toEqual([true, false]);
+  });
+
+  it("refuses a span that runs past the end of the text", () => {
+    expect(selectRenderableSpans(text, [{ span: { start: 20, end: 400 } }])).toEqual([false]);
+  });
+
+  it("refuses an inverted or empty span", () => {
+    expect(
+      selectRenderableSpans(text, [
+        { span: { start: 9, end: 4 } },
+        { span: { start: 5, end: 5 } },
+        { span: { start: -3, end: 4 } },
+      ]),
+    ).toEqual([false, false, false]);
+  });
+
+  it("passes through an issue that never had a span", () => {
+    expect(selectRenderableSpans(text, [{ span: null }])).toEqual([false]);
+  });
+
+  it("keeps the answer aligned with the input, so nothing is mis-attributed", () => {
+    const candidates = [
+      { span: null },
+      { span: { start: 2, end: 7 } },
+      { span: { start: 3, end: 8 } },
+      { span: { start: 18, end: 25 } },
+    ];
+    expect(selectRenderableSpans(text, candidates)).toEqual([false, true, false, true]);
   });
 });

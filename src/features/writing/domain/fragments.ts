@@ -65,6 +65,35 @@ function overlaps(a: FragmentSpan, b: FragmentSpan): boolean {
   return a.start < b.end && b.start < a.end;
 }
 
+/**
+ * Which stored spans can actually be drawn, given the text they point into.
+ *
+ * `resolveFragments` already refuses to place two issues over the same
+ * characters, so a review written by this code cannot produce an overlap. This
+ * exists for the rows that came from somewhere else — an older review, a
+ * hand-repaired one — and because the alternative is worse than a missing
+ * highlight: nested interactive markup, or a span sliced against a text it no
+ * longer matches.
+ *
+ * Anything refused here is not lost. The caller shows it as feedback without a
+ * highlight, which is the same treatment a fragment the model paraphrased gets.
+ */
+export function selectRenderableSpans<T extends { span: FragmentSpan | null }>(
+  text: string,
+  candidates: readonly T[],
+): boolean[] {
+  const accepted: FragmentSpan[] = [];
+
+  return candidates.map(({ span }) => {
+    if (!span) return false;
+    if (span.start < 0 || span.end > text.length || span.start >= span.end) return false;
+    if (accepted.some((taken) => overlaps(taken, span))) return false;
+
+    accepted.push(span);
+    return true;
+  });
+}
+
 export type TextPart =
   | { kind: "plain"; text: string }
   | { kind: "highlight"; text: string; issueIndex: number };

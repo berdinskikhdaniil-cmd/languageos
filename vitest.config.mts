@@ -10,7 +10,9 @@ export default defineConfig({
   test: {
     environment: "node",
     // Unit suite only: no database, no network. See vitest.integration.config.mts.
-    include: ["src/**/*.test.ts"],
+    // `.test.tsx` files render components and opt into jsdom with a docblock
+    // of their own, so the default stays the faster node environment.
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     exclude: ["src/**/*.integration.test.ts", "node_modules/**"],
   },
 });

@@ -41,6 +41,24 @@
   /* Reserved for a metric moving the wrong way */
   --negative: #e8836b;
 
+  /*
+   * Writing feedback — how serious a problem is, and nothing else.
+   *
+   * These are semantic, not decorative, and they are not a second accent:
+   * green stays the product's one accent and every primary button keeps it.
+   * A category never gets a colour of its own — nine categories would be a
+   * rainbow, and the reader would have to learn it. Severity is three states,
+   * which is learnable at a glance.
+   *
+   * Drawn from tones already in the palette so the interface stays one piece:
+   * the same coral as a metric going the wrong way, the same warm amber as
+   * speaking data, the same neutral as writing data. Muted enough to sit under
+   * running text on an almost-black background without reading as a marker pen.
+   */
+  --severity-error: #e8836b;
+  --severity-awkward: #d99a4e;
+  --severity-style: #a9b2c1;
+
   /* Shape */
   --radius-card: 20px;
   --radius-tile: 16px;
@@ -94,6 +112,10 @@
   --color-data-ghost: var(--data-ghost);
 
   --color-negative: var(--negative);
+
+  --color-severity-error: var(--severity-error);
+  --color-severity-awkward: var(--severity-awkward);
+  --color-severity-style: var(--severity-style);
 
   /* One family for the whole product UI. No monospace anywhere. */
   --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
