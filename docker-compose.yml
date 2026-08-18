@@ -1,0 +1,27 @@
+# Local development database only. Nothing here is used in production.
+# Values come from .env (see .env.example); the defaults exist so that
+# `npm run db:up` works on a fresh checkout.
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: language-os-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-language_os}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-language_os}
+      POSTGRES_DB: ${POSTGRES_DB:-language_os}
+    ports:
+      # Host port comes from .env. 5432-5434 are commonly taken by other
+      # local projects, so the default sits out of the way.
+      - "${POSTGRES_PORT:-5442}:5432"
+    volumes:
+      # Postgres 18+ wants a single mount here, not at .../data.
+      - language-os-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-language_os} -d ${POSTGRES_DB:-language_os}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  language-os-pgdata:

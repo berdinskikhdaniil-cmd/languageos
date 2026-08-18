@@ -1,1 +1,141 @@
 @import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Language OS — design tokens
+
+   Dark only, neutral surfaces, one green accent. Every colour, radius and shell
+   measurement lives here once so components never carry raw hex values.
+
+   The rules these tokens exist to support are written down in
+   docs/design-system.md — read that before changing anything visual.
+   --------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces — lift by luminance, never by outline */
+  --bg: #0a0b0d;
+  --surface: #14161c;
+  --surface-raised: #1c1f27;
+  /* Faintly green-cast surface, for the coach's contextual note */
+  --surface-accent: #111a16;
+  --hairline: #24282f;
+
+  /* Text */
+  --text: #edeff3;
+  --text-muted: #8f96a3;
+  --text-faint: #6a7280;
+
+  /* Accent — one green, used for actions, progress and improvement */
+  --accent: #32d583;
+  --accent-pressed: #29bd73;
+  /* Green is light: text sitting on it must be dark ink, never white */
+  --accent-ink: #06130d;
+
+  /* Data — three activity hues and one ghost, nothing more */
+  --data-input: #32d583;
+  --data-speaking: #d99a4e;
+  --data-writing: #a9b2c1;
+  --data-ghost: #262b34;
+
+  /* Reserved for a metric moving the wrong way */
+  --negative: #e8836b;
+
+  /* Shape */
+  --radius-card: 20px;
+  --radius-tile: 16px;
+  --radius-control: 14px;
+
+  /* Shell — safe-area values are overwritten at runtime by TelegramViewport
+     when the app is opened inside Telegram. */
+  --app-width: 30rem;
+  --nav-height: 3.5rem;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-accent: var(--surface-accent);
+  --color-hairline: var(--hairline);
+
+  --color-fg: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-pressed: var(--accent-pressed);
+  --color-accent-ink: var(--accent-ink);
+
+  --color-data-input: var(--data-input);
+  --color-data-speaking: var(--data-speaking);
+  --color-data-writing: var(--data-writing);
+  --color-data-ghost: var(--data-ghost);
+
+  --color-negative: var(--negative);
+
+  /* One family for the whole product UI. No monospace anywhere. */
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+
+  --animate-sheet-in: sheet-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-fade-in: fade-in 0.16s ease-out;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(14%);
+    opacity: 0.65;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    background-color: var(--bg);
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Telegram drags the whole webview on rubber-band scroll. */
+    overscroll-behavior-y: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

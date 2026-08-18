@@ -1,7 +1,49 @@
-export default function Home() {
+import { CoachCard } from "@/features/dashboard/components/coach-card";
+import { ProgressPreview } from "@/features/dashboard/components/progress-preview";
+import { TodayBreakdown } from "@/features/dashboard/components/today-breakdown";
+import { TrackerUnavailable } from "@/features/dashboard/components/tracker-unavailable";
+import { WeekActivityCard } from "@/features/dashboard/components/week-activity-card";
+import { DEMO_ACCURACY_TREND, DEMO_COACH_INSIGHT } from "@/features/dashboard/demo-analytics";
+import { TrackerActions } from "@/features/tracker/components/tracker-actions";
+import { getTrackerOverview, type TrackerOverview } from "@/features/tracker/data/overview";
+import { getCurrentUser } from "@/lib/auth/current-user";
+
+/**
+ * The tracker is per-user live data, so this screen is never prerendered. That
+ * also keeps `next build` independent of a running database.
+ */
+export const dynamic = "force-dynamic";
+
+export default async function DashboardPage() {
+  let overview: TrackerOverview | null = null;
+
+  try {
+    const user = await getCurrentUser();
+    overview = await getTrackerOverview(user);
+  } catch (error) {
+    console.error("[dashboard] tracker unavailable", error);
+  }
+
   return (
-    <main>
-      <div>Hello world!</div>
-    </main>
+    <div className="flex flex-col gap-7">
+      <h1 className="sr-only">Dashboard</h1>
+
+      {overview ? (
+        <>
+          <WeekActivityCard week={overview.week} />
+          <TodayBreakdown today={overview.today} />
+          <TrackerActions
+            activeSession={overview.activeSession}
+            todayDayKey={overview.todayDayKey}
+          />
+        </>
+      ) : (
+        <TrackerUnavailable />
+      )}
+
+      {/* Still illustrative — see features/dashboard/demo-analytics.ts. */}
+      <CoachCard insight={DEMO_COACH_INSIGHT} />
+      <ProgressPreview trend={DEMO_ACCURACY_TREND} />
+    </div>
   );
 }
