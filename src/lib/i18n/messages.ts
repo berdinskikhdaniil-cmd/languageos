@@ -420,12 +420,41 @@ const en = {
     /** "12 mistakes · 3 improvement suggestions", "Speaking · Today". */
     breakdown: (parts: readonly string[]) => parts.join(" · "),
 
-    accuracyLabel: "Errors / 1000 words",
+    accuracyLabel: "Errors per 1,000 words",
     accuracyCaption: (window: string) => `Writing only, ${window}.`,
     accuracyFrom: (from: number) => `from ${from}`,
     accuracyInsufficient: "Not enough data yet.",
     accuracyNeedsWords: (words: number) =>
       `The rate appears once ${words} words have been reviewed.`,
+
+    studyTime: "Study time",
+    activeDaysCount: (count: number) =>
+      pluralize("en", count, { one: "active day", other: "active days" }),
+    /** "35m average per active day" — the mean over days actually studied. */
+    averagePerActiveDay: (duration: string) => `${duration} average per active day`,
+    nothingLogged: "No study time logged in this period.",
+
+    practiceBalance: "Practice balance",
+    /** "63% · 2h 48m", under the name of the group. */
+    balanceShare: (percent: number, duration: string) => `${percent}% · ${duration}`,
+
+    qualityChartInsufficient: "Not enough data for a chart yet.",
+    qualityChartInsufficientBody:
+      "The chart appears once enough writing has been reviewed.",
+    qualityThinPeriods: (count: number) =>
+      `${pluralize("en", count, { one: "period", other: "periods" })} held too little writing to plot.`,
+    /** Screen-reader equivalent of one point on the line. */
+    qualityPoint: (label: string, value: number) => `${label}: ${value}`,
+
+    mistakesHeading: "Mistakes",
+    mistakesByCategory: "By category",
+
+    consistency: "Consistency",
+    /** The heatmap keeps its own stretch of time, so it says which. */
+    consistencyWindow: (weeks: number) => `Last ${weeks} weeks`,
+    consistencySummary: (active: string, total: number) => `${active} of ${total}`,
+    consistencyLess: "Less",
+    consistencyMore: "More",
 
     weakPoints: "Weak points",
     weakPointsHint: "Tap one to see where it happened.",
@@ -436,7 +465,15 @@ const en = {
     repeatedNote: "Skills that came up at least twice.",
     repeatedEmpty: "Nothing has come up twice yet.",
     recent: "Recent mistakes",
-    whereTheyShowUp: "Where they show up",
+    whereTheyShowUp: "Where mistakes appeared",
+    /**
+     * The caveat is not optional politeness. A transcript reaches us through a
+     * speech recogniser and is a different kind of text, so the two counts are
+     * not a comparison of how well the learner writes against how well they
+     * speak — and without this sentence the screen would imply they were.
+     */
+    whereTheyShowUpNote:
+      "The share of concrete mistakes found in each — not a verdict on which is stronger. A transcript comes through speech recognition and is a different kind of text.",
     sources: { writing: "Writing", speaking: "Speaking" } satisfies Record<MistakeSource, string>,
 
     emptyBody:
@@ -948,6 +985,37 @@ const ru: Messages = {
     accuracyNeedsWords: (words: number) =>
       `Показатель появится, когда будет разобрано ${words} слов.`,
 
+    studyTime: "Время занятий",
+    activeDaysCount: (count: number) =>
+      pluralize("ru", count, {
+        one: "активный день",
+        few: "активных дня",
+        many: "активных дней",
+        other: "активных дней",
+      }),
+    averagePerActiveDay: (duration: string) => `в среднем ${duration} за день занятий`,
+    nothingLogged: "За этот период занятий не записано.",
+
+    practiceBalance: "Баланс практики",
+    balanceShare: (percent: number, duration: string) => `${percent}% · ${duration}`,
+
+    qualityChartInsufficient: "Пока мало данных для графика.",
+    qualityChartInsufficientBody:
+      "График появится после достаточного объёма проверенного письма.",
+    qualityThinPeriods: (count: number) =>
+      `В ${pluralize("ru", count, { one: "периоде", few: "периодах", many: "периодах", other: "периодах" })} слишком мало письма для точки.`,
+    qualityPoint: (label: string, value: number) => `${label}: ${value}`,
+
+    mistakesHeading: "Ошибки",
+    mistakesByCategory: "По категориям",
+
+    consistency: "Регулярность",
+    consistencyWindow: (weeks: number) =>
+      `Последние ${pluralize("ru", weeks, { one: "неделя", few: "недели", many: "недель", other: "недель" })}`,
+    consistencySummary: (active: string, total: number) => `${active} из ${total}`,
+    consistencyLess: "Меньше",
+    consistencyMore: "Больше",
+
     weakPoints: "Слабые места",
     weakPointsHint: "Нажмите, чтобы посмотреть примеры.",
     weakPointsEmpty: "За этот период замечаний не нашлось.",
@@ -956,7 +1024,9 @@ const ru: Messages = {
     repeatedNote: "То, что встретилось хотя бы дважды.",
     repeatedEmpty: "Пока ничего не повторилось дважды.",
     recent: "Последние ошибки",
-    whereTheyShowUp: "Где они проявляются",
+    whereTheyShowUp: "Где находились ошибки",
+    whereTheyShowUpNote:
+      "Это доля найденных конкретных ошибок, а не оценка того, что даётся лучше: расшифровка речи проходит через распознавание и устроена иначе.",
     sources: {
       writing: "Письмо",
       speaking: "Говорение",

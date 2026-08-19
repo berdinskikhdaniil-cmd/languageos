@@ -12,7 +12,11 @@ import type { MistakePeriod } from "../domain/period";
  *
  * The same block on the dashboard and on Progress, from the same numbers, so
  * the two screens cannot disagree about how the learner is doing. `action` is
- * the dashboard's link through to the full screen; Progress passes nothing.
+ * the dashboard's link through to the full screen; `chart` is the trend line
+ * Progress puts underneath, which the dashboard has no room for.
+ *
+ * `tone` is only how loudly the label is set: a quiet caption among the
+ * dashboard's other blocks, a section heading on a screen made of sections.
  *
  * A fall is an improvement, so the change is good news pointing down — that is
  * what `improved` is separate from the sign for. And when there is not enough
@@ -25,18 +29,28 @@ export function AccuracySummary({
   messages,
   language = DEFAULT_UI_LANGUAGE,
   action,
+  chart,
+  tone = "compact",
 }: {
   trend: WritingAccuracyTrend;
   period: MistakePeriod;
   messages: Messages;
   language?: UiLanguage;
   action?: ReactNode;
+  chart?: ReactNode;
+  tone?: "compact" | "section";
 }) {
   const comparison = comparableAccuracy(trend);
 
   return (
     <section>
-      <SectionHeader label={messages.progress.accuracyLabel}>{action}</SectionHeader>
+      {tone === "section" ? (
+        <h2 className="text-[1.0625rem] font-bold tracking-[-0.02em]">
+          {messages.progress.accuracyLabel}
+        </h2>
+      ) : (
+        <SectionHeader label={messages.progress.accuracyLabel}>{action}</SectionHeader>
+      )}
 
       {trend.current.status === "ready" ? (
         <>
@@ -58,6 +72,8 @@ export function AccuracySummary({
           <p className={comparison ? "mt-1 text-[0.8125rem] text-faint" : "mt-3 text-[0.8125rem] text-faint"}>
             {messages.progress.accuracyCaption(messages.progress.windowsInline[period])}
           </p>
+
+          {chart}
         </>
       ) : (
         <>

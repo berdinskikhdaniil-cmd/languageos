@@ -1,5 +1,5 @@
 import { TZDate } from "@date-fns/tz";
-import { addDays, differenceInSeconds, startOfDay, startOfWeek } from "date-fns";
+import { addDays, addMonths, differenceInSeconds, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 import { DEFAULT_UI_LANGUAGE, intlLocale, type UiLanguage } from "./i18n/locale";
 import { getMessages } from "./i18n/messages";
 
@@ -47,6 +47,64 @@ export function localWeekInterval(instant: Date, timeZone: string): Interval {
  */
 export function addLocalDays(instant: Date, days: number, timeZone: string): Date {
   return new Date(addDays(new TZDate(instant, timeZone), days).getTime());
+}
+
+/** Local midnight on the first of the month containing `instant`. */
+export function startOfLocalMonth(instant: Date, timeZone: string): Date {
+  return new Date(startOfMonth(new TZDate(instant, timeZone)).getTime());
+}
+
+/** Calendar months, so the result is still local midnight on a first. */
+export function addLocalMonths(instant: Date, months: number, timeZone: string): Date {
+  return new Date(addMonths(new TZDate(instant, timeZone), months).getTime());
+}
+
+/** "2026-08" for the local month containing `instant`. Stable group key. */
+export function localMonthKey(instant: Date, timeZone: string): string {
+  const zoned = new TZDate(instant, timeZone);
+  return `${zoned.getFullYear()}-${String(zoned.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * A short month for a chart axis: "Aug" / "авг.", with the year added only when
+ * it is not the current one — the same rule `localDateLabel` follows, and for
+ * the same reason: the common case should stay short enough to fit under a bar.
+ */
+export function localMonthLabel(
+  instant: Date,
+  timeZone: string,
+  now: Date,
+  language: UiLanguage = DEFAULT_UI_LANGUAGE,
+): string {
+  const sameYear =
+    localMonthKey(instant, timeZone).slice(0, 4) === localMonthKey(now, timeZone).slice(0, 4);
+
+  return new Intl.DateTimeFormat(intlLocale(language), {
+    month: "short",
+    timeZone,
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(instant);
+}
+
+/**
+ * A short day for a chart axis: "19 Aug" / "19 авг." — the date without the
+ * relative words `localDateLabel` uses. An axis label saying "Today" under a
+ * column would be read as a category rather than as a date.
+ */
+export function localShortDateLabel(
+  instant: Date,
+  timeZone: string,
+  now: Date,
+  language: UiLanguage = DEFAULT_UI_LANGUAGE,
+): string {
+  const sameYear = localDayKey(instant, timeZone).slice(0, 4) === localDayKey(now, timeZone).slice(0, 4);
+
+  return new Intl.DateTimeFormat(intlLocale(language), {
+    day: "numeric",
+    month: "short",
+    timeZone,
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(instant);
 }
 
 /** "2026-08-18" for the local day containing `instant`. Stable sort/group key. */
@@ -129,6 +187,87 @@ export function localDateLabel(
     timeZone,
     ...(key.slice(0, 4) === todayKey.slice(0, 4) ? {} : { year: "numeric" }),
   }).format(instant);
+}
+
+/**
+ * How a stretch of time is cut up for a chart.
+ *
+ * The three periods a person would actually use describing the same span out
+ * loud. Which one a given chart picks is a product decision and lives with the
+ * chart; turning an instant into the period that contains it is timezone
+ * arithmetic and lives here, with everything else that must never be computed
+ * in the server's own zone.
+ */
+export const BUCKET_GRANULARITIES = ["day", "week", "month"] as const;
+
+export type BucketGranularity = (typeof BUCKET_GRANULARITIES)[number];
+
+/** Local midnight the period containing `instant` opens on. */
+export function bucketStart(
+  instant: Date,
+  granularity: BucketGranularity,
+  timeZone: string,
+): Date {
+  if (granularity === "day") return startOfLocalDay(instant, timeZone);
+  if (granularity === "week") return startOfLocalWeek(instant, timeZone);
+  return startOfLocalMonth(instant, timeZone);
+}
+
+/** A stable group key for the period containing `instant`. */
+export function bucketKey(
+  instant: Date,
+  granularity: BucketGranularity,
+  timeZone: string,
+): string {
+  if (granularity === "month") return localMonthKey(instant, timeZone);
+  return localDayKey(bucketStart(instant, granularity, timeZone), timeZone);
+}
+
+/** The next period along. Calendar arithmetic, so DST never shifts a boundary. */
+export function nextBucketStart(
+  start: Date,
+  granularity: BucketGranularity,
+  timeZone: string,
+): Date {
+  if (granularity === "day") return addLocalDays(start, 1, timeZone);
+  if (granularity === "week") return addLocalDays(start, 7, timeZone);
+  return addLocalMonths(start, 1, timeZone);
+}
+
+/**
+ * Every period start between two instants, including the empty ones.
+ *
+ * The empty ones are the point. A chart drawn only from periods that have
+ * something in them would space a fortnight's silence exactly like a single day
+ * off, which is the opposite of what somebody looking at their own consistency
+ * needs to see.
+ *
+ * Bounded rather than open-ended: running away here would mean a chart with
+ * thousands of columns, so the sequence stops at `limit` and callers choose a
+ * granularity that keeps them well inside it.
+ */
+export function bucketStartsBetween({
+  from,
+  to,
+  granularity,
+  timeZone,
+  limit = 400,
+}: {
+  from: Date;
+  to: Date;
+  granularity: BucketGranularity;
+  timeZone: string;
+  limit?: number;
+}): Date[] {
+  const starts: Date[] = [];
+  let cursor = bucketStart(from, granularity, timeZone);
+
+  while (cursor.getTime() < to.getTime() && starts.length < limit) {
+    starts.push(cursor);
+    cursor = nextBucketStart(cursor, granularity, timeZone);
+  }
+
+  return starts;
 }
 
 export function elapsedSeconds(from: Date, to: Date): number {

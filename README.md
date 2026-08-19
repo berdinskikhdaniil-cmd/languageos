@@ -54,14 +54,19 @@ infrastructure. It runs the same code as this repository.
   Recordings are capped at 90 seconds, and the audio is never stored: it is
   transcribed and discarded. Pronunciation is **not** assessed — a transcript is
   text, and text cannot show how you sounded.
+- **Detailed progress analytics** — one screen showing how much you studied and when,
+  how the time split between input, speaking and writing, a twelve-week consistency
+  grid, and how your written error rate is moving. Every figure comes from what you
+  actually logged and had reviewed; a period with no data draws nothing rather than
+  a smoothed guess.
 - **Unified mistake tracking** — the corrections from your writing and your speaking
   are read as one set of weak points on the Progress screen: which categories come up
   most, which specific skills have come up at least twice, where each one happened,
   and what the correction was. Tapping any of them opens the review it came from.
   Counts of "mistakes" are concrete errors only — stylistic suggestions are shown and
   counted separately. There are no generated exercises yet.
-- **Errors per 1000 words** — a real figure, over reviewed writing only, with an
-  honest "not enough data yet" until there is enough of it to divide by.
+- **Errors per 1,000 words** — a real figure and a real trend, over reviewed writing
+  only, with an honest "not enough data yet" until there is enough of it to divide by.
 - **Settings** — one setting so far: the language the interface is drawn in.
 - **Telegram bot** — `/start` and `/help`, a button that opens the Mini App, and a
   webhook that verifies Telegram's secret header.

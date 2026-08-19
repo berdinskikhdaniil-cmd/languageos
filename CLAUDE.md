@@ -56,10 +56,13 @@ Versions come from `package.json` — check there rather than assuming.
 
 ## 4. What exists today
 
-Working: a mistake engine — the issues Writing and Speaking already store, read as
-one set of weak points on Progress: categories, repeated skills, a history of
-concrete examples with a way back to the review each came from, and a real
-errors-per-1000-words figure over reviewed writing; speaking practice — a topic, a recording made in the browser, a
+Working: Progress analytics — one screen over the tracker's sessions and the two
+issue tables, showing study time per period, the Input / Speaking / Writing balance,
+a twelve-week consistency grid, an errors-per-1000-words trend over reviewed
+writing, and mistakes by category and by source; a mistake engine — the issues
+Writing and Speaking already store, read as one set of weak points: categories,
+repeated skills, and a history of concrete examples with a way back to the review
+each came from; speaking practice — a topic, a recording made in the browser, a
 transcript from OpenRouter and a review of it as *spoken* language, with the
 mistakes marked in the learner's own words and the time filed to the tracker;
 writing practice with real AI review — free writing or a retelling goes
@@ -245,12 +248,44 @@ in "repeated mistakes" only at two occurrences or more, because "repeated" is a 
 The stored label stays canonical English; `progress.skills` in the dictionary is a
 small optional display map, and an unknown label is shown exactly as stored.
 
+**Progress analytics are real or absent.** Every figure on `/progress` is an
+aggregation over `sessions`, `writing_issues` and `speaking_issues` — there is no
+analytics table, nothing is precomputed, and nothing is illustrative. A period with
+no data draws no bar, a section with nothing behind it is not rendered, and no
+curve is smoothed or interpolated to fill a gap. Reads are bounded by the window
+the screen is showing, widened only as far as the heatmap and the previous-period
+comparison genuinely need.
+
+**Study time is grouped once, and `other` is in the total.** Charts call
+`activityGroup` and `sessionSeconds` rather than re-deriving either, so a bar on
+Progress and a number on the dashboard can never disagree about the same session.
+`other` is language time and belongs in every total and in the height of every bar;
+it is drawn in the ghost tone and never becomes a fourth headline skill. A session
+is filed by the local day it *started* on, in the learner's own zone.
+
+**The practice balance is not interpreted.** The screen says how the time split and
+stops. There is no defensible ideal ratio of listening to speaking to writing that
+this product can hold somebody to, so it must never say "too little speaking" or
+"good balance" — that is a coach feature and it needs a method first.
+
+**The consistency grid is twelve local weeks, whatever period is selected.** A
+30-day grid is four columns and a five-year grid is unreadable on a phone; the
+caption on screen names the stretch so it is never confused with the tabs. Shade
+comes from the learner's own daily goal, not from their busiest day, so the scale
+means the same thing every time it is drawn.
+
 **Errors per 1000 words is writing only.** Concrete writing mistakes divided by the
 words of *reviewed* writing entries in the window. Speaking is excluded — a transcript
 is a different modality with a recogniser in between, and its word count is not
 comparable. Below `MIN_ACCURACY_WORDS` the answer is "not enough data yet", not a
 confident-looking number computed from forty words, and a previous period is compared
 against only when it too has enough. Nothing invents one.
+
+The same rule governs the trend line: every point comes from `writingAccuracy`, the
+function behind the headline figure, so a second methodology cannot drift away from
+the first. A bucket holding some reviewed writing but less than the floor is left
+off the line and counted, so the caption can say how many; a bucket holding none is
+simply absent. Fewer than two plottable points means no line at all.
 
 **Time.** Timezone arithmetic lives in `src/lib/time.ts` and nowhere else — the
 server's timezone is not the user's. Pass `now` in rather than scattering
@@ -430,6 +465,17 @@ say which you used.
   per-user daily count (`WRITING_DAILY_REVIEW_LIMIT`). The daily count is a plain
   query rather than a rate limiter, so two requests racing at the boundary can both
   pass. There is no billing, no quota and no per-account budget.
+- Progress analytics read every session and issue in the window and aggregate in the
+  domain layer. Honest and testable at today's volumes, and not a plan for years of
+  history; it will need SQL aggregation before then.
+- Study time on Progress is scoped to the account, not to one language, because that
+  is how the tracker has always scoped it. A second language would make Progress and
+  the dashboard agree with each other and disagree with the language tabs.
+- "All time" chooses months once the span passes half a year and never coarsens
+  further, so a multi-year account eventually gets a very wide chart.
+- The charts have no axis scale and no touch tooltips. The headline figures and the
+  screen-reader summaries carry the numbers; reading an exact value off a bar is not
+  possible.
 - The mistake engine counts and explains; it generates nothing. There are no drills,
   no "practise this", no mastery score and no AI recommendation from a weak point.
 - Repeated skills are grouped on the model's own label. Two reviews that name the same
