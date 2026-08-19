@@ -18,6 +18,9 @@ vi.mock("../actions", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+  // The route this screen actually lives on. The bottom bar *is* showing here,
+  // which is the case the correction panel used to be clipped by.
+  usePathname: () => "/practice/speaking/attempt-1",
 }));
 
 import { LocaleProvider } from "@/lib/i18n/locale-context";

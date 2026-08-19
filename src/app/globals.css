@@ -89,6 +89,15 @@
 
   /* Telegram's stable viewport height, or the browser's dynamic viewport. */
   --app-height: var(--tg-viewport-stable-height, 100dvh);
+
+  /*
+   * How much fixed chrome sits at the bottom of the column when the navigation
+   * is showing: the bar itself plus whatever the device and Telegram reserve
+   * under it. Anything else pinned to the bottom edge — the correction panel —
+   * measures from here rather than from the viewport, so nothing has to know a
+   * device-specific number to stay clear of the bar.
+   */
+  --bottom-chrome: calc(var(--nav-height) + var(--safe-bottom));
 }
 
 @theme inline {

@@ -22,3 +22,21 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/progress", id: "progress", icon: ChartLine },
   { href: "/library", id: "library", icon: Library },
 ];
+
+/**
+ * Routes the bottom navigation stays out of the way of.
+ *
+ * Writing is a text box and a keyboard on a phone screen, and a bar fixed above
+ * the keyboard would take a line of it while covering what is being typed. The
+ * writing screens carry their own way back instead.
+ *
+ * It lives here rather than inside the bar because the bar is not the only
+ * thing that has to know: anything else pinned to the bottom edge has to sit
+ * clear of it, and two copies of this predicate would drift apart the moment a
+ * route was added to one and not the other. That is exactly how the correction
+ * panel came to be clipped on the speaking screens — the bar was showing there,
+ * and the panel had been written for the screens where it is not.
+ */
+export function hidesBottomNav(pathname: string): boolean {
+  return pathname.startsWith("/practice/writing");
+}
