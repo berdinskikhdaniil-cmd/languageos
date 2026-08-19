@@ -498,11 +498,9 @@ export type ResumablePractice = {
 export async function getResumablePractice({
   userId,
   userLanguageId,
-  now = new Date(),
 }: {
   userId: string;
   userLanguageId: string;
-  now?: Date;
 }): Promise<ResumablePractice | null> {
   const [row] = await db
     .select({
@@ -534,10 +532,6 @@ export async function getResumablePractice({
     )
     .orderBy(desc(mistakePracticeSessions.createdAt))
     .limit(1);
-
-  // `now` is accepted so a caller can pass the request's own clock; nothing in
-  // this query needs it yet, and the parameter keeps the shape of the others.
-  void now;
 
   return row ?? null;
 }
