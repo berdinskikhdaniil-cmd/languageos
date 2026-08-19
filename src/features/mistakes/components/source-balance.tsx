@@ -24,13 +24,13 @@ export function SourceBalance({
         {messages.progress.whereTheyShowUp}
       </h2>
 
-      <dl className="mt-1 divide-y divide-hairline">
+      <dl className="mt-2 divide-y divide-hairline">
         {MISTAKE_SOURCES.map((source) => (
-          <div key={source} className="flex items-baseline justify-between gap-4 py-3">
+          <div key={source} className="flex items-baseline justify-between gap-4 py-3.5">
             <dt className="min-w-0 text-[0.9375rem] leading-snug">
               {messages.progress.sources[source]}
             </dt>
-            <dd className="shrink-0 text-[0.9375rem] font-semibold leading-snug">
+            <dd className="shrink-0 text-[1.0625rem] font-semibold leading-snug">
               {balance[source]}
             </dd>
           </div>

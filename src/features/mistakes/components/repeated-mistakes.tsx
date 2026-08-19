@@ -1,9 +1,10 @@
-import Link from "next/link";
 import type { Messages } from "@/lib/i18n/messages";
 import type { RepeatedMistake } from "../domain/aggregate";
 import { skillDisplayName } from "../domain/label";
 import { mistakeDetailHref } from "../domain/links";
 import type { MistakePeriod } from "../domain/period";
+import { MistakeRow } from "./mistake-row";
+import { sourceBreakdown } from "./source-breakdown";
 
 /**
  * The skills a learner keeps getting wrong.
@@ -17,6 +18,9 @@ import type { MistakePeriod } from "../domain/period";
  *
  * Common labels get a readable name in the reader's language; anything else is
  * shown exactly as the model wrote it, which is also exactly what is stored.
+ *
+ * Drawn as the same rows as the weak points above, because it is the same kind
+ * of thing — a way into the history — cut a different way.
  */
 export function RepeatedMistakes({
   items,
@@ -43,21 +47,15 @@ export function RepeatedMistakes({
             {messages.progress.repeatedNote}
           </p>
 
-          <ul className="mt-2 divide-y divide-hairline">
+          <ul className="mt-3 flex flex-col gap-2">
             {items.map((item) => (
-              <li key={item.key}>
-                <Link
-                  href={mistakeDetailHref({ kind: "skill", key: item.key }, period)}
-                  className="block py-3.5 transition-colors active:bg-surface"
-                >
-                  <span className="block text-[0.9375rem] font-medium leading-snug">
-                    {skillDisplayName(item.key, item.label, messages.progress.skills)}
-                  </span>
-                  <span className="mt-1 block text-[0.8125rem] leading-snug text-faint">
-                    {messages.progress.mistakeCount(item.mistakes)}
-                  </span>
-                </Link>
-              </li>
+              <MistakeRow
+                key={item.key}
+                href={mistakeDetailHref({ kind: "skill", key: item.key }, period)}
+                title={skillDisplayName(item.key, item.label, messages.progress.skills)}
+                detail={messages.progress.mistakeCount(item.mistakes)}
+                meta={sourceBreakdown(item.bySource, messages)}
+              />
             ))}
           </ul>
         </>

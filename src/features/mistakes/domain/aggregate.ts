@@ -36,12 +36,20 @@ export function countSeverities(occurrences: readonly MistakeOccurrence[]): Seve
   return { mistakes, suggestions: occurrences.length - mistakes };
 }
 
+export type SourceBalance = Record<MistakeSource, number>;
+
 export type CategoryWeakPoint = {
   category: IssueCategory;
   mistakes: number;
   suggestions: number;
   /** Both together — what the detail screen for this category will list. */
   total: number;
+  /**
+   * Which skill the concrete mistakes turned up in. Counted the same way the
+   * headline figure and `balanceBySource` count, so the pair always adds up to
+   * `mistakes` and a reader never has to do arithmetic to check.
+   */
+  bySource: SourceBalance;
 };
 
 /**
@@ -58,12 +66,25 @@ export type CategoryWeakPoint = {
 export function weakPointsByCategory(
   occurrences: readonly MistakeOccurrence[],
 ): CategoryWeakPoint[] {
-  const counts = new Map<IssueCategory, { mistakes: number; suggestions: number }>();
+  const counts = new Map<
+    IssueCategory,
+    { mistakes: number; suggestions: number; bySource: SourceBalance }
+  >();
 
   for (const occurrence of occurrences) {
-    const entry = counts.get(occurrence.category) ?? { mistakes: 0, suggestions: 0 };
-    if (isConcreteMistake(occurrence)) entry.mistakes += 1;
-    else entry.suggestions += 1;
+    const entry = counts.get(occurrence.category) ?? {
+      mistakes: 0,
+      suggestions: 0,
+      bySource: { writing: 0, speaking: 0 },
+    };
+
+    if (isConcreteMistake(occurrence)) {
+      entry.mistakes += 1;
+      entry.bySource[occurrence.source] += 1;
+    } else {
+      entry.suggestions += 1;
+    }
+
     counts.set(occurrence.category, entry);
   }
 
@@ -73,6 +94,7 @@ export function weakPointsByCategory(
       mistakes: entry.mistakes,
       suggestions: entry.suggestions,
       total: entry.mistakes + entry.suggestions,
+      bySource: entry.bySource,
     }))
     .sort(
       (a, b) =>
@@ -155,8 +177,6 @@ export function repeatedMistakes(
     }))
     .sort((a, b) => b.mistakes - a.mistakes || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
-
-export type SourceBalance = Record<MistakeSource, number>;
 
 /**
  * Which skill the mistakes are showing up in. Concrete mistakes only, so the

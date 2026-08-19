@@ -428,7 +428,10 @@ const en = {
       `The rate appears once ${words} words have been reviewed.`,
 
     weakPoints: "Weak points",
+    weakPointsHint: "Tap one to see where it happened.",
     weakPointsEmpty: "Nothing was flagged in this period.",
+    /** "Writing 4" — one half of a row's breakdown line. */
+    sourceCount: (source: string, count: number) => `${source} ${count}`,
     repeated: "Repeated mistakes",
     repeatedNote: "Skills that came up at least twice.",
     repeatedEmpty: "Nothing has come up twice yet.",
@@ -946,7 +949,9 @@ const ru: Messages = {
       `Показатель появится, когда будет разобрано ${words} слов.`,
 
     weakPoints: "Слабые места",
+    weakPointsHint: "Нажмите, чтобы посмотреть примеры.",
     weakPointsEmpty: "За этот период замечаний не нашлось.",
+    sourceCount: (source: string, count: number) => `${source} ${count}`,
     repeated: "Повторяющиеся ошибки",
     repeatedNote: "То, что встретилось хотя бы дважды.",
     repeatedEmpty: "Пока ничего не повторилось дважды.",

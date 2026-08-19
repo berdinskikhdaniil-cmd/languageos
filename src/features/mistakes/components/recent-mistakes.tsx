@@ -8,9 +8,12 @@ import { occurrenceHref, type MistakeOccurrence } from "../domain/occurrence";
 /**
  * The last few mistakes, whichever skill they came from.
  *
- * A plain list: rows separated by hairlines, no card per line. What a learner
- * recognises is the correction itself, so that leads — their own words, then
- * the right ones — and the classification follows in faint type underneath.
+ * A plain list, deliberately, where the two blocks above are rows you open.
+ * This one is read rather than navigated — it is the last ten things that
+ * happened — so it stays quieter: hairlines instead of surfaces, and no
+ * chevron on ten consecutive lines. What a learner recognises is the correction
+ * itself, so that leads — their own words, then the right ones — and the
+ * classification follows in faint type underneath.
  *
  * Tapping a row opens the review it came from, with the whole text or
  * transcript around it. That is the point of the block: a mistake out of
@@ -38,7 +41,7 @@ export function RecentMistakes({
         {messages.progress.recent}
       </h2>
 
-      <ul className="mt-1 divide-y divide-hairline">
+      <ul className="mt-2 divide-y divide-hairline">
         {occurrences.map((occurrence) => {
           const key = normalizeLabel(occurrence.label);
 
@@ -46,7 +49,7 @@ export function RecentMistakes({
             <li key={`${occurrence.source}-${occurrence.issueId}`}>
               <Link
                 href={occurrenceHref(occurrence)}
-                className="block py-3.5 transition-colors active:bg-surface"
+                className="-mx-2 block rounded-[var(--radius-control)] px-2 py-4 transition-colors active:bg-surface"
               >
                 <span className="block break-words text-[0.9375rem] leading-snug">
                   <span className="text-muted">{occurrence.originalFragment}</span>

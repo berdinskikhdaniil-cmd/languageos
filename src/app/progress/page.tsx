@@ -52,43 +52,54 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
   }
 
   return (
-    <div className="flex flex-col gap-8 pt-3">
+    <div className="pt-3">
+      {/*
+        The title and the period control are one block: the tabs say what the
+        whole screen is counting, so they belong to its heading rather than
+        floating as the first section beneath it.
+      */}
       <header>
         <h1 className="text-[1.75rem] font-bold leading-tight tracking-[-0.03em]">
           {messages.progress.title}
         </h1>
+        {access.status === "ready" && overview ? (
+          <div className="mt-5">
+            <PeriodTabs current={period} messages={messages} />
+          </div>
+        ) : null}
       </header>
 
       {access.status === "ready" && overview ? (
-        <>
-          <PeriodTabs current={period} messages={messages} />
-
-          {overview.hasReviewedWork ? (
-            <>
-              <MistakeSummary overview={overview} period={period} messages={messages} />
-              <AccuracySummary
-                trend={overview.accuracy}
-                period={period}
-                messages={messages}
-                language={access.user.uiLanguage}
-              />
-              <WeakPoints items={overview.weakPoints} period={period} messages={messages} />
-              <RepeatedMistakes items={overview.repeated} period={period} messages={messages} />
-              <SourceBalance balance={overview.balance} messages={messages} />
-              <RecentMistakes
-                occurrences={overview.recent}
-                timeZone={access.user.timeZone}
-                language={access.user.uiLanguage}
-                now={new Date()}
-                messages={messages}
-              />
-            </>
-          ) : (
+        overview.hasReviewedWork ? (
+          /* Roomier than the rest of the product on purpose: this screen is
+             read rather than operated, and its sections are unrelated to each
+             other. */
+          <div className="mt-8 flex flex-col gap-10">
+            <MistakeSummary overview={overview} period={period} messages={messages} />
+            <AccuracySummary
+              trend={overview.accuracy}
+              period={period}
+              messages={messages}
+              language={access.user.uiLanguage}
+            />
+            <WeakPoints items={overview.weakPoints} period={period} messages={messages} />
+            <RepeatedMistakes items={overview.repeated} period={period} messages={messages} />
+            <SourceBalance balance={overview.balance} messages={messages} />
+            <RecentMistakes
+              occurrences={overview.recent}
+              timeZone={access.user.timeZone}
+              language={access.user.uiLanguage}
+              now={new Date()}
+              messages={messages}
+            />
+          </div>
+        ) : (
+          <div className="mt-6">
             <MistakesEmpty messages={messages} />
-          )}
-        </>
+          </div>
+        )
       ) : (
-        <section className="rounded-[var(--radius-card)] bg-surface p-5">
+        <section className="mt-8 rounded-[var(--radius-card)] bg-surface p-5">
           <p className="text-[1.0625rem] font-semibold leading-snug">
             {messages.progress.unavailableTitle}
           </p>

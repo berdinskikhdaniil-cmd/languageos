@@ -81,8 +81,20 @@ describe("weakPointsByCategory", () => {
     ]);
 
     expect(points).toEqual([
-      { category: "grammar", mistakes: 1, suggestions: 1, total: 2 },
-      { category: "word_choice", mistakes: 1, suggestions: 0, total: 1 },
+      {
+        category: "grammar",
+        mistakes: 1,
+        suggestions: 1,
+        total: 2,
+        bySource: { writing: 1, speaking: 0 },
+      },
+      {
+        category: "word_choice",
+        mistakes: 1,
+        suggestions: 0,
+        total: 1,
+        bySource: { writing: 1, speaking: 0 },
+      },
     ]);
   });
 
@@ -97,6 +109,20 @@ describe("weakPointsByCategory", () => {
     ]);
 
     expect(points.map((point) => point.category)).toEqual(["grammar", "style"]);
+  });
+
+  it("splits a category's concrete mistakes across the two skills", () => {
+    const [grammar] = weakPointsByCategory([
+      occurrence({ issueId: "a", category: "grammar" }),
+      occurrence({ issueId: "b", category: "grammar", source: "speaking" }),
+      occurrence({ issueId: "c", category: "grammar", source: "speaking" }),
+      // A suggestion is not a mistake, so it stays out of the breakdown and the
+      // two numbers still add up to `mistakes`.
+      occurrence({ issueId: "d", category: "grammar", source: "speaking", severity: "style" }),
+    ]);
+
+    expect(grammar.bySource).toEqual({ writing: 1, speaking: 2 });
+    expect(grammar.bySource.writing + grammar.bySource.speaking).toBe(grammar.mistakes);
   });
 
   it("leaves out categories with nothing in them", () => {
