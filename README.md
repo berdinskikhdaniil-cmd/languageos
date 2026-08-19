@@ -54,24 +54,30 @@ infrastructure. It runs the same code as this repository.
   Recordings are capped at 90 seconds, and the audio is never stored: it is
   transcribed and discarded. Pronunciation is **not** assessed — a transcript is
   text, and text cannot show how you sounded.
+- **Unified mistake tracking** — the corrections from your writing and your speaking
+  are read as one set of weak points on the Progress screen: which categories come up
+  most, which specific skills have come up at least twice, where each one happened,
+  and what the correction was. Tapping any of them opens the review it came from.
+  Counts of "mistakes" are concrete errors only — stylistic suggestions are shown and
+  counted separately. There are no generated exercises yet.
+- **Errors per 1000 words** — a real figure, over reviewed writing only, with an
+  honest "not enough data yet" until there is enough of it to divide by.
 - **Settings** — one setting so far: the language the interface is drawn in.
 - **Telegram bot** — `/start` and `/help`, a button that opens the Mini App, and a
   webhook that verifies Telegram's secret header.
 
-Two panels on the dashboard — the coach recommendation and the errors-per-1000-words
-trend — are **placeholder content, not working features**. They are marked as such in
-`src/features/dashboard/demo-analytics.ts`; neither is connected to the writing
-review, and there is no mistake engine behind them yet.
+One panel on the dashboard — the coach recommendation — is **placeholder content, not
+a working feature**. It is marked as such in
+`src/features/dashboard/demo-analytics.ts`, and nothing is reading your history behind
+it yet.
 
-The writing review is the only AI in the product. It runs through
+The AI in the product runs through
 [OpenRouter](https://openrouter.ai), on whichever model you configure, and the
 feature stays switched off until you set one.
 
 ## Planned
 
-- Writing practice with AI feedback
-- Speaking practice
-- A mistake engine that turns corrections into targeted drills
+- Practice generated from your own mistakes
 - Vocabulary and spaced repetition
 - Progress history, including a then-versus-now comparison
 - Onboarding, and support for more than one language per user

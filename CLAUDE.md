@@ -56,7 +56,10 @@ Versions come from `package.json` — check there rather than assuming.
 
 ## 4. What exists today
 
-Working: speaking practice — a topic, a recording made in the browser, a
+Working: a mistake engine — the issues Writing and Speaking already store, read as
+one set of weak points on Progress: categories, repeated skills, a history of
+concrete examples with a way back to the review each came from, and a real
+errors-per-1000-words figure over reviewed writing; speaking practice — a topic, a recording made in the browser, a
 transcript from OpenRouter and a review of it as *spoken* language, with the
 mistakes marked in the learner's own words and the time filed to the tracker;
 writing practice with real AI review — free writing or a retelling goes
@@ -80,14 +83,15 @@ against any PostgreSQL and any host that can serve Node over HTTPS. Monetisation
 not exist yet; do not write copy that implies it does.
 
 **Demo content, not functionality** — marked as such in
-`src/features/dashboard/demo-analytics.ts`: the Coach recommendation and the
-Errors / 1000 words trend. Never present either as a working feature. Not built at
-all: vocabulary and SRS, the mistake engine, notifications, payments. Speaking
-assesses language, never pronunciation.
-Writing stores its issues, which is the ground the mistake engine will stand on,
-but nothing aggregates them yet — Practice lists the last three pieces of writing and
+`src/features/dashboard/demo-analytics.ts`: the Coach recommendation, and that is now
+the only one. The Errors / 1000 words figure beside it is real. Never present the
+coach as a working feature. Not built at all: vocabulary and SRS, AI-generated drills
+or "practise my mistakes", notifications, payments. Speaking assesses language, never
+pronunciation.
+The mistake engine reads and counts; it does not yet turn a weak point into an
+exercise, and no screen offers to. Practice lists the last three pieces of writing and
 nothing more: there is no full writing history or catalogue, no second review after a
-rewrite and no analytics over past work. Onboarding sets a language, a timezone and a
+rewrite. Onboarding sets a language, a timezone and a
 goal once, and none of the three can be changed afterwards — Settings exists, but the
 only thing in it is the interface language. The bot logs nothing and parses no
 natural language: it answers two commands and stays quiet otherwise.
@@ -214,6 +218,39 @@ issue it cannot place unambiguously keeps everything except its highlight.
 **The learner's text is saved before the provider is called.** No AI failure may
 cost somebody their draft. A review is a separate row, created `pending` before
 the call, and its unique `entry_id` is what makes a double tap harmless.
+
+**The mistake engine reads; it never copies.** `writing_issues` and
+`speaking_issues` are the source of truth for every figure on Progress, and there is
+no third table holding an aggregate. `src/features/mistakes` is a read model over
+those two: `data/` queries them, `domain/` counts, and nothing writes. The two tables
+already share the `writing_issue_category` and `writing_issue_severity` enums, which
+is what makes merging them a union of rows rather than a translation — never
+introduce a parallel taxonomy for one of them. Only *usable completed* reviews
+contribute; a pending or failed review is missing data, not clean work, and its words
+must never reach the error rate's denominator.
+
+**A mistake is severity `error`.** Every headline count — the summary figure, weak
+points, repeated skills, the source balance, the recent list, the error rate — counts
+`error` and nothing else. `awkward` and `style` are improvement suggestions, are
+counted under their own name, and are never added to the same number. Somebody whose
+text came back with twelve findings, seven of them about wordiness, has not made
+twelve mistakes.
+
+**Skill labels group on case and spacing, and on nothing else.** `normalizeLabel` in
+`features/mistakes/domain/label.ts` trims, lowercases, collapses whitespace and strips
+edge punctuation, so "Past tense" and "past  tense." are one skill. It must never
+decide that two *different* labels mean the same thing — "past tense" and "irregular
+verb" stay two rows. No clustering, no synonym table, no embeddings. A label appears
+in "repeated mistakes" only at two occurrences or more, because "repeated" is a claim.
+The stored label stays canonical English; `progress.skills` in the dictionary is a
+small optional display map, and an unknown label is shown exactly as stored.
+
+**Errors per 1000 words is writing only.** Concrete writing mistakes divided by the
+words of *reviewed* writing entries in the window. Speaking is excluded — a transcript
+is a different modality with a recogniser in between, and its word count is not
+comparable. Below `MIN_ACCURACY_WORDS` the answer is "not enough data yet", not a
+confident-looking number computed from forty words, and a previous period is compared
+against only when it too has enough. Nothing invents one.
 
 **Time.** Timezone arithmetic lives in `src/lib/time.ts` and nowhere else — the
 server's timezone is not the user's. Pass `now` in rather than scattering
@@ -393,6 +430,19 @@ say which you used.
   per-user daily count (`WRITING_DAILY_REVIEW_LIMIT`). The daily count is a plain
   query rather than a rate limiter, so two requests racing at the boundary can both
   pass. There is no billing, no quota and no per-account budget.
+- The mistake engine counts and explains; it generates nothing. There are no drills,
+  no "practise this", no mastery score and no AI recommendation from a weak point.
+- Repeated skills are grouped on the model's own label. Two reviews that name the same
+  weak point differently stay two rows, on purpose — but that also means the engine
+  undercounts a skill the model was inconsistent about.
+- Progress reads every occurrence in the window and aggregates in the domain layer.
+  That is honest and testable at today's volumes and is not a plan for ten thousand
+  reviews; it will need SQL aggregation before then.
+- Errors per 1000 words has no per-day series behind it, so there is no chart — one
+  number and one comparison against the preceding window.
+- The mistake detail screen shows both severities, so its "cases" figure is larger
+  than the "mistakes" figure that opened it. The two are labelled differently and are
+  deliberately not the same measure.
 - Session revocation and expired-row cleanup exist in `src/lib/auth/session.ts` but
   are wired to no UI and no schedule; there is no session rotation and no logout.
 - The bottom sheet has focus-on-open, Escape and scroll lock, but no full focus trap.

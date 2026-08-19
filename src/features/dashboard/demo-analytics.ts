@@ -1,15 +1,19 @@
 import type { Messages } from "@/lib/i18n/messages";
-import type { AccuracyTrend, CoachInsight } from "./types";
+import type { CoachInsight } from "./types";
 
 /**
  * DEMO CONTENT — NOT REAL DATA.
  *
- * These two blocks are still illustrative. The coach needs a model reading the
- * learner's history, and the error rate needs the writing-review pipeline;
- * neither exists yet. Translating them changes nothing about that: they are
- * demo copy in two languages rather than one, and the caption says so on screen.
+ * One block, and only one: the coach still needs a model reading the learner's
+ * history, and that does not exist yet. Translating it changed nothing about
+ * that — it is demo copy in two languages rather than one.
  *
- * Tracker figures never come from this file. They are queried in
+ * The error rate that used to live here is gone, because it is real now. It is
+ * computed from the learner's own reviewed writing in features/mistakes and
+ * says so honestly when there is not enough of it. Nothing in this file feeds
+ * that figure any more, and nothing should feed it from here again.
+ *
+ * Tracker figures never came from this file either. They are queried in
  * features/tracker/data/overview.ts and are kept in a separate object all the
  * way to the screen, so nothing on the dashboard is half real and half made up.
  */
@@ -22,15 +26,5 @@ export function demoCoachInsight(messages: Messages): CoachInsight {
     // The copy is still illustrative, but the button it offers now goes
     // somewhere real: speaking practice exists.
     actionHref: "/practice/speaking",
-  };
-}
-
-export function demoAccuracyTrend(messages: Messages): AccuracyTrend {
-  return {
-    label: messages.dashboard.demo.trendLabel,
-    from: 105,
-    to: 82,
-    series: [105, 101, 104, 96, 93, 95, 88, 85, 82],
-    caption: messages.dashboard.demo.trendCaption,
   };
 }

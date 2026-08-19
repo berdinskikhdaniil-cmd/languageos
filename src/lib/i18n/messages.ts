@@ -1,4 +1,6 @@
 import type { ActivityGroup, ActivityType } from "@/features/tracker/domain/activity";
+import type { MistakeSource } from "@/features/mistakes/domain/occurrence";
+import type { MistakePeriod } from "@/features/mistakes/domain/period";
 import type { SpeakingAttemptRow } from "@/db/schema";
 import type { ContentVerdict } from "@/features/speaking/domain/review";
 import type { WritingEntryStatus } from "@/features/writing/domain/entry-status";
@@ -133,13 +135,16 @@ const en = {
     unavailableBody: (command: string) =>
       `The database is not responding. In local development, start it with ${command} and reload.`,
     allProgress: "All progress",
+    /**
+     * The coach is the only illustrative block left on this screen. The error
+     * rate beside it is real now — see features/mistakes — and its words live
+     * under `progress`, because the same figure is written twice on two screens
+     * and must not be able to disagree with itself.
+     */
     demo: {
       coachHeadline: "Input is running well ahead of speaking.",
       coachDetail: "Five minutes out loud today would even out the week.",
       coachAction: "Start speaking",
-      trendLabel: "Errors / 1000 words",
-      trendFrom: (from: number) => `from ${from}`,
-      trendCaption: "Demo figures until writing review is built.",
     },
   },
 
@@ -367,6 +372,113 @@ const en = {
     } satisfies Record<SpeakingFailureKey, string>,
   },
 
+  /**
+   * The mistake engine's own vocabulary.
+   *
+   * Two words carry the distinction the whole screen is built on, and they are
+   * never interchanged: a *mistake* is severity `error`, and an *improvement
+   * suggestion* is `awkward` or `style`. Category names are deliberately absent
+   * — they already exist once, in `writing.categories`, and one taxonomy read
+   * two ways is exactly what the mistake engine exists to avoid.
+   */
+  progress: {
+    title: "Progress",
+
+    periodRegion: "Time period",
+    periods: {
+      "30d": "30 days",
+      "90d": "90 days",
+      all: "All time",
+    } satisfies Record<MistakePeriod, string>,
+    windows: {
+      "30d": "Last 30 days",
+      "90d": "Last 90 days",
+      all: "All time",
+    } satisfies Record<MistakePeriod, string>,
+    /** The same window inside a sentence: "4 cases over the last 30 days". */
+    windowsInline: {
+      "30d": "over the last 30 days",
+      "90d": "over the last 90 days",
+      all: "over all time",
+    } satisfies Record<MistakePeriod, string>,
+
+    mistakeCount: (count: number) => pluralize("en", count, { one: "mistake", other: "mistakes" }),
+    suggestionCount: (count: number) =>
+      pluralize("en", count, {
+        one: "improvement suggestion",
+        other: "improvement suggestions",
+      }),
+    writingCount: (count: number) =>
+      pluralize("en", count, { one: "piece of writing", other: "pieces of writing" }),
+    speakingCount: (count: number) =>
+      pluralize("en", count, { one: "spoken answer", other: "spoken answers" }),
+    occurrenceCount: (count: number) => pluralize("en", count, { one: "case", other: "cases" }),
+    /** "4 cases over the last 30 days" — one sentence, not two joined by a dot. */
+    occurrencesInWindow: (count: string, window: string) => `${count} ${window}`,
+    /** "Reviewed: 5 pieces of writing, 3 spoken answers" — empty parts left out. */
+    reviewedLine: (parts: readonly string[]) => `Reviewed: ${parts.join(", ")}`,
+    /** "12 mistakes · 3 improvement suggestions", "Speaking · Today". */
+    breakdown: (parts: readonly string[]) => parts.join(" · "),
+
+    accuracyLabel: "Errors / 1000 words",
+    accuracyCaption: (window: string) => `Writing only, ${window}.`,
+    accuracyFrom: (from: number) => `from ${from}`,
+    accuracyInsufficient: "Not enough data yet.",
+    accuracyNeedsWords: (words: number) =>
+      `The rate appears once ${words} words have been reviewed.`,
+
+    weakPoints: "Weak points",
+    weakPointsEmpty: "Nothing was flagged in this period.",
+    repeated: "Repeated mistakes",
+    repeatedNote: "Skills that came up at least twice.",
+    repeatedEmpty: "Nothing has come up twice yet.",
+    recent: "Recent mistakes",
+    whereTheyShowUp: "Where they show up",
+    sources: { writing: "Writing", speaking: "Speaking" } satisfies Record<MistakeSource, string>,
+
+    emptyBody:
+      "Your repeated mistakes will show up here once your writing and speaking have been reviewed.",
+    emptyAction: "Go to practice",
+
+    backToProgress: "Back to progress",
+    detailEmpty: "Nothing is filed under this one in this period.",
+
+    unavailableTitle: "Progress is not reachable right now.",
+    unavailableBody:
+      "The database is not responding. Nothing has been lost — reload in a moment.",
+
+    /**
+     * Readable names for the skills that actually come back, keyed by the
+     * normalised label. A courtesy for the common ones, not a taxonomy: a label
+     * that is not here is shown exactly as the model wrote it, which is also
+     * what is stored. Nothing here changes a stored value, and two keys must
+     * never share a name — two identical rows would read as a bug.
+     */
+    skills: {
+      "past tense": "Past tense",
+      "verb tense": "Verb tense",
+      "verb form": "Verb form",
+      "irregular verb": "Irregular verb",
+      "irregular verbs": "Irregular verbs",
+      "modal verb": "Modal verb",
+      "phrasal verb": "Phrasal verb",
+      article: "Article",
+      articles: "Articles",
+      preposition: "Preposition",
+      prepositions: "Prepositions",
+      plural: "Plural",
+      "subject-verb agreement": "Subject–verb agreement",
+      "word order": "Word order",
+      "word choice": "Word choice",
+      collocation: "Collocation",
+      spelling: "Spelling",
+      punctuation: "Punctuation",
+      gerund: "Gerund",
+      infinitive: "Infinitive",
+      "question form": "Question form",
+    } satisfies Record<string, string>,
+  },
+
   onboarding: {
     stepOf: (step: number, total: number) => `${step} of ${total}`,
     languageTitle: "What language are you learning?",
@@ -407,11 +519,6 @@ const en = {
   },
 
   placeholders: {
-    progress: {
-      title: "Progress",
-      description:
-        "Hours with the language, error rates by category, and your first recording next to your latest one.",
-    },
     library: {
       title: "Library",
       description:
@@ -560,9 +667,6 @@ const ru: Messages = {
       coachHeadline: "Слушаете и читаете намного больше, чем говорите.",
       coachDetail: "Пять минут вслух сегодня выровняли бы неделю.",
       coachAction: "Начать говорить",
-      trendLabel: "Ошибок на 1000 слов",
-      trendFrom: (from: number) => `против прежних ${from}`,
-      trendCaption: "Демо-цифры, пока разбор письма не подключён.",
     },
   },
 
@@ -795,6 +899,100 @@ const ru: Messages = {
     } satisfies Record<SpeakingFailureKey, string>,
   },
 
+  progress: {
+    title: "Прогресс",
+
+    periodRegion: "Период",
+    periods: {
+      "30d": "30 дней",
+      "90d": "90 дней",
+      all: "Всё время",
+    } satisfies Record<MistakePeriod, string>,
+    windows: {
+      "30d": "Последние 30 дней",
+      "90d": "Последние 90 дней",
+      all: "Всё время",
+    } satisfies Record<MistakePeriod, string>,
+    windowsInline: {
+      "30d": "за последние 30 дней",
+      "90d": "за последние 90 дней",
+      all: "за всё время",
+    } satisfies Record<MistakePeriod, string>,
+
+    mistakeCount: (count: number) =>
+      pluralize("ru", count, { one: "ошибка", few: "ошибки", many: "ошибок", other: "ошибок" }),
+    suggestionCount: (count: number) =>
+      pluralize("ru", count, {
+        one: "совет по улучшению",
+        few: "совета по улучшению",
+        many: "советов по улучшению",
+        other: "советов по улучшению",
+      }),
+    writingCount: (count: number) =>
+      pluralize("ru", count, { one: "текст", few: "текста", many: "текстов", other: "текстов" }),
+    speakingCount: (count: number) =>
+      pluralize("ru", count, { one: "ответ", few: "ответа", many: "ответов", other: "ответов" }),
+    occurrenceCount: (count: number) =>
+      pluralize("ru", count, { one: "случай", few: "случая", many: "случаев", other: "случаев" }),
+    occurrencesInWindow: (count: string, window: string) => `${count} ${window}`,
+    reviewedLine: (parts: readonly string[]) => `Разобрано: ${parts.join(", ")}`,
+    breakdown: (parts: readonly string[]) => parts.join(" · "),
+
+    accuracyLabel: "Ошибок на 1000 слов",
+    accuracyCaption: (window: string) => `Только письмо, ${window}.`,
+    accuracyFrom: (from: number) => `против прежних ${from}`,
+    accuracyInsufficient: "Пока мало данных.",
+    accuracyNeedsWords: (words: number) =>
+      `Показатель появится, когда будет разобрано ${words} слов.`,
+
+    weakPoints: "Слабые места",
+    weakPointsEmpty: "За этот период замечаний не нашлось.",
+    repeated: "Повторяющиеся ошибки",
+    repeatedNote: "То, что встретилось хотя бы дважды.",
+    repeatedEmpty: "Пока ничего не повторилось дважды.",
+    recent: "Последние ошибки",
+    whereTheyShowUp: "Где они проявляются",
+    sources: {
+      writing: "Письмо",
+      speaking: "Говорение",
+    } satisfies Record<MistakeSource, string>,
+
+    emptyBody:
+      "Здесь появятся ваши повторяющиеся ошибки после проверок письма и речи.",
+    emptyAction: "Перейти к практике",
+
+    backToProgress: "К прогрессу",
+    detailEmpty: "За этот период сюда ничего не попало.",
+
+    unavailableTitle: "Прогресс сейчас недоступен.",
+    unavailableBody:
+      "База данных не отвечает. Ничего не потеряно — перезагрузите страницу через минуту.",
+
+    skills: {
+      "past tense": "Прошедшее время",
+      "verb tense": "Время глагола",
+      "verb form": "Форма глагола",
+      "irregular verb": "Неправильный глагол",
+      "irregular verbs": "Неправильные глаголы",
+      "modal verb": "Модальный глагол",
+      "phrasal verb": "Фразовый глагол",
+      article: "Артикль",
+      articles: "Артикли",
+      preposition: "Предлог",
+      prepositions: "Предлоги",
+      plural: "Множественное число",
+      "subject-verb agreement": "Согласование подлежащего и сказуемого",
+      "word order": "Порядок слов",
+      "word choice": "Выбор слова",
+      collocation: "Сочетаемость слов",
+      spelling: "Орфография",
+      punctuation: "Пунктуация",
+      gerund: "Герундий",
+      infinitive: "Инфинитив",
+      "question form": "Вопросительная форма",
+    } satisfies Record<string, string>,
+  },
+
   onboarding: {
     stepOf: (step: number, total: number) => `${step} из ${total}`,
     languageTitle: "Какой язык вы учите?",
@@ -836,11 +1034,6 @@ const ru: Messages = {
   },
 
   placeholders: {
-    progress: {
-      title: "Прогресс",
-      description:
-        "Часы с языком, доля ошибок по категориям и ваша первая запись рядом с последней.",
-    },
     library: {
       title: "Материалы",
       description:

@@ -4,7 +4,9 @@ import { ProgressPreview } from "@/features/dashboard/components/progress-previe
 import { TodayBreakdown } from "@/features/dashboard/components/today-breakdown";
 import { TrackerUnavailable } from "@/features/dashboard/components/tracker-unavailable";
 import { WeekActivityCard } from "@/features/dashboard/components/week-activity-card";
-import { demoAccuracyTrend, demoCoachInsight } from "@/features/dashboard/demo-analytics";
+import { demoCoachInsight } from "@/features/dashboard/demo-analytics";
+import { getMistakeOverview } from "@/features/mistakes/data/mistakes";
+import type { WritingAccuracyTrend } from "@/features/mistakes/domain/accuracy";
 import { TrackerActions } from "@/features/tracker/components/tracker-actions";
 import { getTrackerOverview, type TrackerOverview } from "@/features/tracker/data/overview";
 import { resolvePageAccess } from "@/lib/auth/page-access";
@@ -42,6 +44,15 @@ export default async function DashboardPage() {
   const messages = getMessages(language);
 
   let overview: TrackerOverview | null = null;
+  /**
+   * The error rate, over the last thirty days and the thirty before it.
+   *
+   * A separate failure from the tracker's on purpose: two reads, two things
+   * that can go wrong, and losing one of them should not cost the other. With
+   * nothing read at all the block reports insufficient data, which is exactly
+   * what it means — no words were seen.
+   */
+  let accuracy: WritingAccuracyTrend = { current: { status: "insufficient", words: 0 }, previous: null };
 
   if (access.status === "ready") {
     try {
@@ -52,6 +63,13 @@ export default async function DashboardPage() {
       // The tracker could not be read — almost always a database that is not
       // running. Say so rather than reporting zeroes.
       console.error("[dashboard] tracker unavailable", error);
+    }
+
+    try {
+      accuracy = (await getMistakeOverview(access.user, "30d")).accuracy;
+    } catch (error) {
+      unstable_rethrow(error);
+      console.error("[dashboard] could not read the error rate", error);
     }
   }
 
@@ -74,11 +92,8 @@ export default async function DashboardPage() {
 
       {/* Still illustrative — see features/dashboard/demo-analytics.ts. */}
       <CoachCard insight={demoCoachInsight(messages)} />
-      <ProgressPreview
-        trend={demoAccuracyTrend(messages)}
-        messages={messages}
-        language={language}
-      />
+      {/* Real, from the learner's own reviewed writing. See features/mistakes. */}
+      <ProgressPreview trend={accuracy} messages={messages} language={language} />
     </div>
   );
 }
