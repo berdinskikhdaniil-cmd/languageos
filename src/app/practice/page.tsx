@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
+import { ResumePractice } from "@/features/mistake-practice/components/resume-practice";
+import { WeakSpots } from "@/features/mistake-practice/components/weak-spots";
+import { getResumablePractice, type ResumablePractice as ResumablePracticeRow } from "@/features/mistake-practice/data/sessions";
+import { loadWeakSpots } from "@/features/mistake-practice/data/targets";
+import type { WeakSpot } from "@/features/mistake-practice/domain/weak-spots";
 import { RecentSpeaking } from "@/features/speaking/components/recent-speaking";
 import {
   getRecentSpeakingAttempts,
@@ -33,6 +38,13 @@ export default async function PracticePage() {
    */
   let recentWriting: RecentWritingEntry[] = [];
   let recentSpeaking: RecentSpeakingAttempt[] = [];
+  /**
+   * Targeted practice reads the mistake engine, which reads two more tables
+   * again. It is the most likely of these to be slow and the least essential to
+   * the screen, so it fails on its own rather than taking the lists with it.
+   */
+  let weakSpots: WeakSpot[] = [];
+  let resumable: ResumablePracticeRow | null = null;
 
   if (access.status === "ready") {
     const scope = {
@@ -48,6 +60,16 @@ export default async function PracticePage() {
     } catch (error) {
       unstable_rethrow(error);
       console.error("[practice] could not read recent practice", error);
+    }
+
+    try {
+      [weakSpots, resumable] = await Promise.all([
+        loadWeakSpots(access.user),
+        getResumablePractice(scope),
+      ]);
+    } catch (error) {
+      unstable_rethrow(error);
+      console.error("[practice] could not read weak spots", error);
     }
   }
 
@@ -65,6 +87,20 @@ export default async function PracticePage() {
           {messages.practice.intro}
         </p>
       </header>
+
+      {/*
+        An interrupted set comes first, above everything else on the screen.
+        Somebody who left five exercises half-answered ten minutes ago did not
+        open Practice to start a sixth thing.
+      */}
+      {resumable ? <ResumePractice practice={resumable} messages={messages} /> : null}
+
+      {/*
+        And then the weak points, above Writing and Speaking, because this is
+        the end of the loop those two feed: study, write or speak, get it
+        reviewed, and then work on what the review actually found.
+      */}
+      <WeakSpots spots={weakSpots} messages={messages} />
 
       <section>
         <h2 className="text-[1.0625rem] font-bold tracking-[-0.02em]">

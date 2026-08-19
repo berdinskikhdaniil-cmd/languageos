@@ -167,7 +167,7 @@ any error Telegram reports about it.
 | `AUTH_SESSION_TTL_SECONDS` | no | Lifetime of a session and its cookie. Default 2592000 (30 days). |
 | `DEFAULT_TIMEZONE` | no | Only used by the development seed (`npm run db:seed`). Real accounts confirm their own timezone during onboarding. Default `UTC`. |
 | `OPENROUTER_API_KEY` | for AI review | Key from [openrouter.ai/keys](https://openrouter.ai/keys). Server-only, and a spending credential. Without it, writing is saved but never reviewed. |
-| `OPENROUTER_MODEL` | for AI review | The model that reviews writing, as an OpenRouter slug. No default on purpose — pick one that supports JSON-schema structured output. |
+| `OPENROUTER_MODEL` | for AI review | The model that reviews writing and speaking, and that writes and checks mistake-practice exercises, as an OpenRouter slug. No default on purpose — pick one that supports JSON-schema structured output. |
 | `OPENROUTER_TIMEOUT_MS` | no | How long to wait for a review. Default 45000. Keep it below your host's function timeout. |
 | `WRITING_DAILY_REVIEW_LIMIT` | no | Pieces of writing one learner may have reviewed per day. Default 20. Retries do not count again. |
 | `ALLOW_DEV_AUTH` | no | **Local development only.** Runs requests without a session as a local development user. Needs the exact string `"true"` *and* a non-production `NODE_ENV`, so a production build ignores it. Never a fallback for a failed Telegram sign-in. |
@@ -185,6 +185,12 @@ Never commit real values. `.env` is gitignored, and `.env.example` is the templa
 
 ## Known limitations
 
+- Targeted mistake practice needs no environment variable of its own: it uses the
+  `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` that writing review already needs, and
+  is switched off with the same calm message when they are absent. A completed set
+  costs two completions — one to write the five exercises, one to check them all
+  together — and there is no per-account daily limit on it yet, unlike writing's
+  `WRITING_DAILY_REVIEW_LIMIT`.
 - Speaking practice needs `OPENROUTER_STT_MODEL` as well as `OPENROUTER_MODEL`;
   without it the rest of the app works and Speaking says it is not switched on.
   It also needs topics written in the language being learned, and those exist

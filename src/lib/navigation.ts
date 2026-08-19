@@ -28,7 +28,9 @@ export const NAV_ITEMS: NavItem[] = [
  *
  * Writing is a text box and a keyboard on a phone screen, and a bar fixed above
  * the keyboard would take a line of it while covering what is being typed. The
- * writing screens carry their own way back instead.
+ * writing screens carry their own way back instead. Targeted practice is the
+ * same shape — one prompt, one input, one button — and is listed for the same
+ * reason.
  *
  * It lives here rather than inside the bar because the bar is not the only
  * thing that has to know: anything else pinned to the bottom edge has to sit
@@ -38,5 +40,5 @@ export const NAV_ITEMS: NavItem[] = [
  * and the panel had been written for the screens where it is not.
  */
 export function hidesBottomNav(pathname: string): boolean {
-  return pathname.startsWith("/practice/writing");
+  return pathname.startsWith("/practice/writing") || pathname.startsWith("/practice/mistakes");
 }

@@ -56,7 +56,10 @@ Versions come from `package.json` — check there rather than assuming.
 
 ## 4. What exists today
 
-Working: Progress analytics — one screen over the tracker's sessions and the two
+Working: targeted practice on a weak point — a category or a repeated skill from the
+mistake engine becomes five short exercises generated from the learner's own real
+mistakes, answered one at a time, checked in a single pass, and reported as a count of
+accepted answers; Progress analytics — one screen over the tracker's sessions and the two
 issue tables, showing study time per period, the Input / Speaking / Writing balance,
 a twelve-week consistency grid, an errors-per-1000-words trend over reviewed
 writing, and mistakes by category and by source; a mistake engine — the issues
@@ -85,15 +88,20 @@ and both must keep working: the official hosted bot, and a self-hosted copy set 
 against any PostgreSQL and any host that can serve Node over HTTPS. Monetisation does
 not exist yet; do not write copy that implies it does.
 
+Targeted practice closes the loop the product exists for — study, write or speak, get
+it reviewed, see the weak point, work on it — and it is the first thing that turns a
+mistake into an exercise. It stops there: there is no mastery model, no spaced
+repetition, no scheduling, and no claim that a practised skill has been learned.
+
 **Demo content, not functionality** — marked as such in
 `src/features/dashboard/demo-analytics.ts`: the Coach recommendation, and that is now
 the only one. The Errors / 1000 words figure beside it is real. Never present the
 coach as a working feature. Not built at all: vocabulary and SRS, AI-generated drills
 or "practise my mistakes", notifications, payments. Speaking assesses language, never
 pronunciation.
-The mistake engine reads and counts; it does not yet turn a weak point into an
-exercise, and no screen offers to. Practice lists the last three pieces of writing and
-nothing more: there is no full writing history or catalogue, no second review after a
+The mistake engine reads and counts; targeted practice is the one thing that acts on
+what it found, and it neither writes to it nor changes it. Practice lists the last
+three pieces of writing and nothing more: there is no full writing history or catalogue, no second review after a
 rewrite. Onboarding sets a language, a timezone and a
 goal once, and none of the three can be changed afterwards — Settings exists, but the
 only thing in it is the interface language. The bot logs nothing and parses no
@@ -247,6 +255,62 @@ verb" stay two rows. No clustering, no synonym table, no embeddings. A label app
 in "repeated mistakes" only at two occurrences or more, because "repeated" is a claim.
 The stored label stays canonical English; `progress.skills` in the dictionary is a
 small optional display map, and an unknown label is shown exactly as stored.
+
+**Mistake practice is generated only from the learner's own real issues.** A practice
+target is a *claim* — "you keep getting the past tense wrong" — and a client is never
+allowed to make it. Whatever arrives from a form field is re-derived in
+`resolvePracticeTarget` from the authenticated user's own reviews, in the language they
+are currently studying, and a target with no concrete `error` behind it is refused
+before a row exists or a provider is called. Only severity `error` grounds a set:
+`awkward` and `style` are suggestions, and a drill built on one would teach that a
+matter of taste was a mistake.
+
+**The source occurrences are grounding, never instructions.** At most six of them —
+recent, concrete, distinct — go into a delimited block in the *user* message, and the
+system message says the block is data. They exist so the model can identify the skill,
+and the prompt says in as many words that reproducing one of those sentences, or one of
+them with a name changed, is not an exercise. A deterministic check refuses a set whose
+prompt — or whose prompt with its own gap filled in — is a verbatim copy of a fragment
+or a suggestion the learner already saw. There is no semantic plagiarism detector and
+must not be one. The same boundary governs grading: an answer typed into the box is
+data, and an answer shaped like a command is graded, never obeyed.
+
+**Five exercises, or none.** `parseExerciseSet` fails closed on everything: four items,
+six items, a duplicate prompt, an unknown type, a punctuation-only prompt or answer, an
+unexpected property, a fill-in exercise with no gap or with two. A set is the shape of
+the whole screen, and quietly delivering four would be a product decision made by a
+malformed response. Grading fails closed the same way, and on identity as well as
+content — a result for an exercise that was not asked about, or two results for one, is
+refused whole, because a verdict shown beside the wrong answer is worse than no verdict.
+
+**One generation and one batch grading per session.** Two provider calls for a completed
+set, and never five. Both are guarded by claims the database enforces: a partial unique
+index on (user, target type, target key) while the status is `generating`, and a
+`ready → grading` conditional update. A failed generation leaves `failed` and a retry
+that reuses the same row; a failed *check* returns the row to `ready` with a reason on
+it, because the answers survived it and asking somebody to redo five exercises over one
+timeout would be indefensible. Answers are written before the check and refused after
+it.
+
+**Practice does not alter the mistake engine, and does not count as study time.**
+Nothing in `features/mistake-practice` writes to `writing_issues`, `speaking_issues` or
+`sessions`. Historical counts on Progress, the source balance and errors per 1000 words
+mean exactly what they meant before somebody practised — having drilled a skill is not
+a claim that a mistake stopped having happened. And no tracker session is filed:
+there is no honest activity bucket for targeted practice yet, and putting it in one
+would distort the practice balance. Changing either of these is a methodology decision
+and needs the user's agreement first.
+
+**No mastery model.** A completed set says "4 of 5 answers accepted" and stops. Not
+mastered, not learned, not improved, no percentage, no level, no streak against a skill.
+One short set cannot establish any of that, and the prompts forbid the model from
+claiming it either. `acceptable` exists so that an answer which differs from the
+reference one but is still correct is never called a mistake.
+
+**An unfinished set never carries its own answers to the browser.** `buildSessionView`
+is the boundary: a `ready` view holds prompts and the learner's own words, and the
+canonical answers and grading notes appear only once the set has been checked. A page
+payload containing the answer key would turn recall into recognition.
 
 **Progress analytics are real or absent.** Every figure on `/progress` is an
 aggregation over `sessions`, `writing_issues` and `speaking_issues` — there is no
@@ -476,8 +540,27 @@ say which you used.
 - The charts have no axis scale and no touch tooltips. The headline figures and the
   screen-reader summaries carry the numbers; reading an exact value off a bar is not
   possible.
-- The mistake engine counts and explains; it generates nothing. There are no drills,
-  no "practise this", no mastery score and no AI recommendation from a weak point.
+- Targeted practice generates and checks; it does not model learning. No mastery
+  score, no spaced repetition, no scheduling, no "you have fixed this", and no way to
+  see a history of past sets — Practice surfaces the latest unfinished one and nothing
+  else. A retake is a new session with new contexts, never the same five again.
+- Practice time is deliberately outside the tracker: a completed set files no session,
+  so it appears in no total, no chart and no consistency day. Whether it belongs under
+  `other`, under a dedicated activity, or nowhere is a methodology question nobody has
+  answered yet.
+- The only guards on practice cost are the five-item cap, the two claims and the
+  answer-length cap. There is no daily limit on how many sets one account may generate,
+  where Writing has `WRITING_DAILY_REVIEW_LIMIT`.
+- "The exercises are in the language being learned" is enforced by the prompt, not by a
+  validator. A script check would misfire on the many languages that share one, so a
+  model that answered in the wrong language would be caught by a reader rather than by
+  the parser.
+- A generated set is worded in whatever interface language the learner had when it ran,
+  exactly as a review is. Switching afterwards does not retranslate it.
+- A weak point offered on the Practice hub comes from the last 90 local days, while a
+  target opened from Progress is allowed from all of time. The two windows differ on
+  purpose — one is about what to offer, the other about what to permit — and that means
+  the hub can stay quiet about a skill the detail screen will still practise.
 - Repeated skills are grouped on the model's own label. Two reviews that name the same
   weak point differently stay two rows, on purpose — but that also means the engine
   undercounts a skill the model was inconsistent about.

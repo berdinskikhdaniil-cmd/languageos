@@ -78,6 +78,13 @@ export const APP_ERROR_CODES = [
   "SPEAKING_ATTEMPT_NOT_FOUND",
   "SPEAKING_UPLOAD_FAILED",
   "SPEAKING_REVIEW_FAILED",
+
+  /* Targeted practice on a weak point. */
+  "PRACTICE_TARGET_UNKNOWN",
+  "PRACTICE_SESSION_NOT_FOUND",
+  "PRACTICE_START_FAILED",
+  "PRACTICE_SAVE_FAILED",
+  "PRACTICE_GRADE_FAILED",
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];

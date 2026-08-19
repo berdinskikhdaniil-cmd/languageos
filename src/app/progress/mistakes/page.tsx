@@ -2,6 +2,8 @@ import { ChevronLeft } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
+import { StartPracticeButton } from "@/features/mistake-practice/components/start-practice-button";
+import { toStoredTarget } from "@/features/mistake-practice/domain/target";
 import { OccurrenceList } from "@/features/mistakes/components/occurrence-list";
 import { getMistakeOccurrences } from "@/features/mistakes/data/mistakes";
 import { countSeverities } from "@/features/mistakes/domain/aggregate";
@@ -92,6 +94,16 @@ export default async function MistakeDetailPage({
                 messages.progress.suggestionCount(counts.suggestions),
               ])}
             </p>
+          ) : null}
+
+          {/*
+            The end of the loop, offered where the weak point is explained. Only
+            when there is something concrete behind it: a weak point made
+            entirely of stylistic notes has no mistake to drill, and exercises
+            built from one would teach that a matter of taste was an error.
+          */}
+          {counts.mistakes > 0 ? (
+            <StartPracticeButton target={toStoredTarget(selection)} />
           ) : null}
 
           <OccurrenceList

@@ -3,6 +3,7 @@ import type { MistakeSource } from "@/features/mistakes/domain/occurrence";
 import type { MistakePeriod } from "@/features/mistakes/domain/period";
 import type { SpeakingAttemptRow } from "@/db/schema";
 import type { ContentVerdict } from "@/features/speaking/domain/review";
+import type { PracticeVerdict } from "@/features/mistake-practice/domain/grading";
 import type { WritingEntryStatus } from "@/features/writing/domain/entry-status";
 import type { IssueCategory, IssueSeverity } from "@/features/writing/domain/review";
 import {
@@ -51,6 +52,23 @@ export type SpeakingFailureKey =
   | "transcriptionFailed"
   | "reviewFailed";
 
+/**
+ * Why targeted practice did not work. Two failures live in one record because
+ * one screen shows both, and the difference between them decides what the
+ * learner is offered next — see mistake-practice/domain/failures.
+ */
+export type PracticeFailureKey =
+  | "notConfigured"
+  | "noExamples"
+  | "generating"
+  | "grading"
+  | "busy"
+  | "timeout"
+  | "unavailable"
+  | "answerAll"
+  | "generationFailed"
+  | "gradingFailed";
+
 /** Where a review that did not happen is explained. See writing/domain/failures. */
 export type ReviewFailureKey =
   | "notConfigured"
@@ -75,6 +93,7 @@ const en = {
     change: "Change",
     saving: "Saving…",
     working: "Working…",
+    tryAgain: "Try again",
     optional: "Optional",
   },
 
@@ -519,6 +538,89 @@ const en = {
     } satisfies Record<string, string>,
   },
 
+  /**
+   * Targeted practice on one weak point.
+   *
+   * The vocabulary is careful in one particular place. Nothing here says
+   * "mastered", "learned" or "improved", and nothing produces a level or a
+   * percentage: one set of five exercises cannot establish any of that, and
+   * saying it would be the most flattering lie the product could tell. The
+   * result screen counts answers and stops.
+   */
+  mistakePractice: {
+    /** The CTA on a weak point, on Progress and on the Practice hub. */
+    practiceThis: "Practice this",
+
+    weakSpots: "Your weak spots",
+    weakSpotsHint: "Five short exercises, built from mistakes you actually made.",
+
+    resume: "Continue practising",
+    /** "2 of 5 answered" — how far into an abandoned set they got. */
+    resumeDetail: (answered: number, total: number) => `${answered} of ${total} answered`,
+
+    /** "2 of 5", above the exercise. */
+    step: (current: number, total: number) => `${current} of ${total}`,
+    stepRegion: "Progress through this set",
+
+    preparing: "Building your exercises…",
+    preparingNote: "This takes a few seconds. Keep the app open.",
+    checking: "Checking your answers…",
+
+    fillTheGap: "Complete the sentence.",
+    answerLabel: (position: number) => `Your answer to exercise ${position}`,
+    answerPlaceholder: "Your answer",
+    next: "Next",
+    previous: "Back",
+    check: "Check my answers",
+
+    resultTitle: "Result",
+    /** "4 of 5" — a count of answers, never a score. */
+    score: (accepted: number, total: number) => `${accepted} of ${total}`,
+    scoreNote: (accepted: number, total: number) =>
+      `${accepted} of ${total} answers accepted.`,
+    correctCount: (count: number) => `${count} correct`,
+    acceptableCount: (count: number) =>
+      pluralize("en", count, {
+        one: "other correct answer",
+        other: "other correct answers",
+      }),
+    incorrectCount: (count: number) =>
+      pluralize("en", count, { one: "mistake", other: "mistakes" }),
+
+    yourAnswer: "Your answer",
+    shouldBe: "Should be",
+    verdicts: {
+      correct: "Correct",
+      acceptable: "Also correct",
+      incorrect: "Not quite",
+    } satisfies Record<PracticeVerdict, string>,
+
+    practiceAgain: "Another 5 exercises",
+    backToPractice: "Back to practice",
+
+    notFoundTitle: "That practice set could not be found.",
+    notFoundBody: "It may have been started on another account. Start a new one from Practice.",
+
+    /**
+     * Two of these say "your answers are saved" in different words, and that is
+     * the point: a generation that failed costs nothing, and a check that failed
+     * costs nothing either — but only the second one has work behind it worth
+     * reassuring somebody about.
+     */
+    failures: {
+      notConfigured: "Practice is not switched on for this installation yet.",
+      noExamples: "There is nothing to practise here yet. It needs mistakes from a review first.",
+      generating: "The exercises are being built right now. Give it a moment and reload.",
+      grading: "Your answers are being checked right now. Give it a moment and reload.",
+      busy: "The exercise writer is busy right now. Try again in a minute.",
+      timeout: "That took too long. Try again.",
+      unavailable: "Practice is unavailable on this installation right now.",
+      answerAll: "Answer every exercise first.",
+      generationFailed: "The exercises could not be prepared. Try again.",
+      gradingFailed: "Your answers are saved, but we could not check them yet.",
+    } satisfies Record<PracticeFailureKey, string>,
+  },
+
   onboarding: {
     stepOf: (step: number, total: number) => `${step} of ${total}`,
     languageTitle: "What language are you learning?",
@@ -621,6 +723,12 @@ const en = {
     SPEAKING_ATTEMPT_NOT_FOUND: "That answer could not be found.",
     SPEAKING_UPLOAD_FAILED: "Could not send that recording. Try again.",
     SPEAKING_REVIEW_FAILED: "Could not review that answer. Try again.",
+
+    PRACTICE_TARGET_UNKNOWN: "That weak point is not one we can practise.",
+    PRACTICE_SESSION_NOT_FOUND: "That practice set could not be found.",
+    PRACTICE_START_FAILED: "Could not start the practice. Try again.",
+    PRACTICE_SAVE_FAILED: "Could not save that answer. Try again.",
+    PRACTICE_GRADE_FAILED: "Could not check your answers. Try again.",
   } satisfies Record<AppErrorCode, string>,
 };
 
@@ -651,6 +759,7 @@ const ru: Messages = {
     change: "Изменить",
     saving: "Сохраняем…",
     working: "Секунду…",
+    tryAgain: "Попробовать снова",
     optional: "Необязательно",
   },
 
@@ -1068,6 +1177,76 @@ const ru: Messages = {
     } satisfies Record<string, string>,
   },
 
+  mistakePractice: {
+    practiceThis: "Практиковать",
+
+    weakSpots: "Ваши слабые места",
+    weakSpotsHint: "Пять коротких заданий по ошибкам, которые вы действительно сделали.",
+
+    resume: "Продолжить тренировку",
+    resumeDetail: (answered: number, total: number) => `Отвечено ${answered} из ${total}`,
+
+    step: (current: number, total: number) => `${current} из ${total}`,
+    stepRegion: "Ход тренировки",
+
+    preparing: "Готовим задания…",
+    preparingNote: "Это займёт несколько секунд. Не закрывайте приложение.",
+    checking: "Проверяем ответы…",
+
+    fillTheGap: "Дополните предложение.",
+    answerLabel: (position: number) => `Ваш ответ на задание ${position}`,
+    answerPlaceholder: "Ваш ответ",
+    next: "Далее",
+    previous: "Назад",
+    check: "Проверить ответы",
+
+    resultTitle: "Результат",
+    score: (accepted: number, total: number) => `${accepted} из ${total}`,
+    scoreNote: (accepted: number, total: number) => `${accepted} из ${total} ответов приняты.`,
+    correctCount: (count: number) => `${count} правильно`,
+    acceptableCount: (count: number) =>
+      pluralize("ru", count, {
+        one: "допустимый вариант",
+        few: "допустимых варианта",
+        many: "допустимых вариантов",
+        other: "допустимых вариантов",
+      }),
+    incorrectCount: (count: number) =>
+      pluralize("ru", count, {
+        one: "ошибка",
+        few: "ошибки",
+        many: "ошибок",
+        other: "ошибок",
+      }),
+
+    yourAnswer: "Ваш ответ",
+    shouldBe: "Нужно",
+    verdicts: {
+      correct: "Верно",
+      acceptable: "Тоже верно",
+      incorrect: "Неверно",
+    } satisfies Record<PracticeVerdict, string>,
+
+    practiceAgain: "Ещё 5 заданий",
+    backToPractice: "К практике",
+
+    notFoundTitle: "Эта тренировка не найдена.",
+    notFoundBody: "Возможно, она была начата в другом аккаунте. Начните новую в разделе «Практика».",
+
+    failures: {
+      notConfigured: "Тренировки в этой установке пока не включены.",
+      noExamples: "Здесь пока нечего тренировать. Сначала нужны ошибки из разбора.",
+      generating: "Задания уже готовятся. Подождите немного и обновите страницу.",
+      grading: "Ответы уже проверяются. Подождите немного и обновите страницу.",
+      busy: "Сервис сейчас занят. Попробуйте через минуту.",
+      timeout: "Это заняло слишком много времени. Попробуйте ещё раз.",
+      unavailable: "Тренировки в этой установке сейчас недоступны.",
+      answerAll: "Ответьте на все задания.",
+      generationFailed: "Не удалось подготовить задания. Попробуйте ещё раз.",
+      gradingFailed: "Ответы сохранены, но пока не удалось их проверить.",
+    } satisfies Record<PracticeFailureKey, string>,
+  },
+
   onboarding: {
     stepOf: (step: number, total: number) => `${step} из ${total}`,
     languageTitle: "Какой язык вы учите?",
@@ -1171,6 +1350,12 @@ const ru: Messages = {
     SPEAKING_ATTEMPT_NOT_FOUND: "Этот ответ не найден.",
     SPEAKING_UPLOAD_FAILED: "Не удалось отправить запись. Попробуйте снова.",
     SPEAKING_REVIEW_FAILED: "Не удалось разобрать ответ. Попробуйте снова.",
+
+    PRACTICE_TARGET_UNKNOWN: "Это слабое место нельзя потренировать.",
+    PRACTICE_SESSION_NOT_FOUND: "Эта тренировка не найдена.",
+    PRACTICE_START_FAILED: "Не удалось начать тренировку. Попробуйте снова.",
+    PRACTICE_SAVE_FAILED: "Не удалось сохранить ответ. Попробуйте снова.",
+    PRACTICE_GRADE_FAILED: "Не удалось проверить ответы. Попробуйте снова.",
   } satisfies Record<AppErrorCode, string>,
 };
 

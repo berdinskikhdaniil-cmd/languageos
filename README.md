@@ -64,7 +64,16 @@ infrastructure. It runs the same code as this repository.
   most, which specific skills have come up at least twice, where each one happened,
   and what the correction was. Tapping any of them opens the review it came from.
   Counts of "mistakes" are concrete errors only — stylistic suggestions are shown and
-  counted separately. There are no generated exercises yet.
+  counted separately.
+- **Targeted practice from your own mistakes** — tap a weak point on Progress, or one
+  of the three offered on Practice, and get five short exercises built from the
+  mistakes you actually made. They train the *skill*, in new situations: an exercise
+  never repeats the sentence you got wrong. Answer all five, then the whole set is
+  checked at once — an answer that differs from the reference one but is still
+  correct is marked as such rather than as a mistake. Your answers are saved as you
+  go, so a set you left half-finished is waiting on Practice. Practising does not
+  change your history of mistakes: the counts on Progress mean what they meant
+  before, and practice time is not yet counted as study time.
 - **Errors per 1,000 words** — a real figure and a real trend, over reviewed writing
   only, with an honest "not enough data yet" until there is enough of it to divide by.
 - **Settings** — one setting so far: the language the interface is drawn in.
@@ -82,7 +91,6 @@ feature stays switched off until you set one.
 
 ## Planned
 
-- Practice generated from your own mistakes
 - Vocabulary and spaced repetition
 - Progress history, including a then-versus-now comparison
 - Onboarding, and support for more than one language per user

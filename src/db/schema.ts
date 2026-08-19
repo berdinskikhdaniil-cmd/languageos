@@ -666,3 +666,201 @@ export type WritingIssueRow = typeof writingIssues.$inferSelect;
 export type SpeakingAttemptRow = typeof speakingAttempts.$inferSelect;
 export type SpeakingReviewRow = typeof speakingReviews.$inferSelect;
 export type SpeakingIssueRow = typeof speakingIssues.$inferSelect;
+
+/**
+ * Which weak point a practice session is about.
+ *
+ * The same two kinds the mistake engine already reasons in — see
+ * `MistakeSelection` in features/mistakes/domain/aggregate.ts. Two values rather
+ * than one prefixed string, so nothing has to parse a key to know what it is.
+ */
+export const mistakePracticeTargetTypeEnum = pgEnum("mistake_practice_target_type", [
+  "skill",
+  "category",
+]);
+
+/**
+ * Where a practice session has got to.
+ *
+ * Five states, and the two "in flight" ones are locks as well as records:
+ * `generating` is claimed before the provider is called and `grading` is claimed
+ * before the second call, so a double tap finds the work already taken rather
+ * than paying for it twice.
+ *
+ * `failed` is generation's failure and only generation's. A grading attempt that
+ * did not come back returns the row to `ready` with a reason on it — the answers
+ * are safe, and the learner is offered the check again rather than a new set of
+ * exercises they never asked for.
+ */
+export const mistakePracticeStatusEnum = pgEnum("mistake_practice_status", [
+  "generating",
+  "ready",
+  "grading",
+  "completed",
+  "failed",
+]);
+
+/**
+ * The two exercise shapes. Both ask the learner to produce language rather than
+ * recognise it, which is why there is no multiple choice here.
+ */
+export const mistakePracticeItemTypeEnum = pgEnum("mistake_practice_item_type", [
+  "fill_blank",
+  "rewrite",
+]);
+
+/**
+ * What the grader made of one answer.
+ *
+ * `acceptable` is the value that earns its place: natural language has more than
+ * one right answer, and an answer that differs from the canonical one while
+ * still satisfying the exercise is not a mistake. Without a third value the
+ * grader would have to call it wrong.
+ */
+export const mistakePracticeVerdictEnum = pgEnum("mistake_practice_verdict", [
+  "correct",
+  "acceptable",
+  "incorrect",
+]);
+
+/**
+ * One short, targeted practice run over a weak point the learner actually has.
+ *
+ * The target is stored as the mistake engine's own canonical values — a
+ * normalised English skill label, or a category identifier — never a translated
+ * one, for the same reason issue categories are stored canonically: a Russian
+ * interface must not create a second taxonomy.
+ *
+ * Nothing here writes to `writing_issues` or `speaking_issues`, and nothing here
+ * files a tracker session. Practice is a separate fact about the learner; it
+ * does not edit their history and it does not yet count as study time.
+ */
+export const mistakePracticeSessions = pgTable(
+  "mistake_practice_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userLanguageId: uuid("user_language_id").notNull(),
+    targetType: mistakePracticeTargetTypeEnum("target_type").notNull(),
+    /** The normalised skill label, or the category identifier. Canonical, always. */
+    targetKey: text("target_key").notNull(),
+    status: mistakePracticeStatusEnum("status").notNull().default("generating"),
+    /** Whatever answered the generation call, as the provider reported it. */
+    model: text("model").notNull(),
+    /** And whatever answered the grading call. Null until it has run. */
+    gradingModel: text("grading_model"),
+    generationInputTokens: integer("generation_input_tokens"),
+    generationOutputTokens: integer("generation_output_tokens"),
+    gradingInputTokens: integer("grading_input_tokens"),
+    gradingOutputTokens: integer("grading_output_tokens"),
+    /** An internal code — "timeout", "invalid_response". Never shown to a learner. */
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("mistake_practice_sessions_user_created_at_idx").on(table.userId, table.createdAt),
+    /**
+     * "One generation in flight per target", in the database rather than in
+     * hopeful application code. Two taps on Practice race to insert; one wins
+     * and calls the provider, the other finds the session already under way and
+     * opens it instead of paying for a second set of exercises.
+     */
+    uniqueIndex("mistake_practice_sessions_one_generating_per_target")
+      .on(table.userId, table.targetType, table.targetKey)
+      .where(sql`${table.status} = 'generating'`),
+    /**
+     * The same composite reference the tracker, Writing and Speaking use: it is
+     * structurally impossible to file practice against somebody else's language.
+     */
+    foreignKey({
+      columns: [table.userId, table.userLanguageId],
+      foreignColumns: [userLanguages.userId, userLanguages.id],
+      name: "mistake_practice_sessions_user_language_belongs_to_user_fk",
+    }).onDelete("cascade"),
+    check("mistake_practice_sessions_target_key_present", sql`char_length(${table.targetKey}) between 1 and 120`),
+    /** A completed session that never finished would render as a result with no date. */
+    check(
+      "mistake_practice_sessions_completed_has_timestamp",
+      sql`${table.status} <> 'completed' or ${table.completedAt} is not null`,
+    ),
+  ],
+);
+
+/**
+ * One exercise, and the one answer the learner gave it.
+ *
+ * Deliberately not a separate answers table: v1 keeps a single final answer per
+ * exercise, and a second table would buy a history nothing asks for. Practising
+ * the same weak point again is a new session, not a second attempt at these
+ * five — which is also what keeps "no mastery model" honest.
+ *
+ * `grading_notes` is server-only context for the grader. It is never sent to the
+ * browser before the set has been checked, because it describes the answer.
+ */
+export const mistakePracticeItems = pgTable(
+  "mistake_practice_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => mistakePracticeSessions.id, { onDelete: "cascade" }),
+    /** 1 to 5, in the order they are worked through. */
+    position: integer("position").notNull(),
+    type: mistakePracticeItemTypeEnum("type").notNull(),
+    prompt: text("prompt").notNull(),
+    canonicalAnswer: text("canonical_answer").notNull(),
+    gradingNotes: text("grading_notes"),
+    /** Null until the learner answers. Trimmed and capped before it is written. */
+    userAnswer: text("user_answer"),
+    verdict: mistakePracticeVerdictEnum("verdict"),
+    correctedAnswer: text("corrected_answer"),
+    /** Short, in the learner's interface language, about this exercise's skill. */
+    explanation: text("explanation"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    /** One exercise per slot. Also what makes re-persisting a generation safe. */
+    uniqueIndex("mistake_practice_items_session_position_unique").on(
+      table.sessionId,
+      table.position,
+    ),
+    check("mistake_practice_items_position_range", sql`${table.position} between 1 and 5`),
+    check("mistake_practice_items_prompt_length", sql`char_length(${table.prompt}) between 1 and 600`),
+    check(
+      "mistake_practice_items_canonical_answer_length",
+      sql`char_length(${table.canonicalAnswer}) between 1 and 600`,
+    ),
+    /** Mirrors MAX_ANSWER_CHARS in features/mistake-practice/domain/answers.ts. */
+    check(
+      "mistake_practice_items_user_answer_length",
+      sql`${table.userAnswer} is null or char_length(${table.userAnswer}) <= 1000`,
+    ),
+  ],
+);
+
+export const mistakePracticeSessionsRelations = relations(
+  mistakePracticeSessions,
+  ({ one, many }) => ({
+    user: one(users, { fields: [mistakePracticeSessions.userId], references: [users.id] }),
+    userLanguage: one(userLanguages, {
+      fields: [mistakePracticeSessions.userLanguageId],
+      references: [userLanguages.id],
+    }),
+    items: many(mistakePracticeItems),
+  }),
+);
+
+export const mistakePracticeItemsRelations = relations(mistakePracticeItems, ({ one }) => ({
+  session: one(mistakePracticeSessions, {
+    fields: [mistakePracticeItems.sessionId],
+    references: [mistakePracticeSessions.id],
+  }),
+}));
+
+export type MistakePracticeSessionRow = typeof mistakePracticeSessions.$inferSelect;
+export type MistakePracticeItemRow = typeof mistakePracticeItems.$inferSelect;
