@@ -3,11 +3,13 @@ import {
   bigint,
   boolean,
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   unique,
@@ -377,11 +379,240 @@ export const writingIssues = pgTable(
   ],
 );
 
+/**
+ * Where a spoken answer has got to.
+ *
+ * Four states, and the split between the last two is the point: `failed` means
+ * the recording never became text, and `transcribed` means it did but the
+ * review has not finished. They are told apart because the recovery differs —
+ * we do not keep the audio, so a failed transcription can only be answered by
+ * recording again, while a failed review can be retried from the transcript we
+ * already hold.
+ */
+export const speakingAttemptStatusEnum = pgEnum("speaking_attempt_status", [
+  "transcribing",
+  "transcribed",
+  "completed",
+  "failed",
+]);
+
+/**
+ * The review's own lifecycle. Deliberately its own type rather than Writing's:
+ * a status is per-feature machinery, and sharing one would only make the enum's
+ * name lie about who uses it.
+ *
+ * The *issue taxonomy* below is shared, and that is the opposite decision made
+ * on purpose — see speaking_issues.
+ */
+export const speakingReviewStatusEnum = pgEnum("speaking_review_status", [
+  "pending",
+  "completed",
+  "failed",
+]);
+
+/** Did the answer address the topic? A verdict, never a score. */
+export const speakingContentVerdictEnum = pgEnum("speaking_content_verdict", [
+  "yes",
+  "partly",
+  "no",
+]);
+
+/**
+ * One spoken answer to one topic.
+ *
+ * The audio is not here, and that is the design rather than an omission: the
+ * recording reaches the server, goes to the transcriber, and the bytes are
+ * dropped. What is worth keeping is what the learner can act on — how long they
+ * spoke, what they said, and what the review made of it.
+ */
+export const speakingAttempts = pgTable(
+  "speaking_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userLanguageId: uuid("user_language_id").notNull(),
+    /**
+     * The client's own id for this submission, and the whole of the idempotency
+     * story. A double tap sends the same value twice; the unique index below
+     * turns the second one into a lookup instead of a second recording, a
+     * second transcription and a second charge.
+     *
+     * Deliberately not the primary key: a client-chosen id is a client-chosen
+     * row, and scoping it to the user keeps one account's guess from touching
+     * another's.
+     */
+    clientRequestId: text("client_request_id").notNull(),
+    /** Which topic, as an identifier that survives the wording being improved. */
+    topicKey: text("topic_key").notNull(),
+    /** And the exact sentence the learner saw, frozen at the moment they saw it. */
+    topicPrompt: text("topic_prompt").notNull(),
+    status: speakingAttemptStatusEnum("status").notNull().default("transcribing"),
+    /**
+     * How long they actually spoke. Server-decided: the transcriber reports the
+     * audio's real length, and the client's own number is only a fallback.
+     * This is what the tracker counts.
+     */
+    durationSeconds: integer("duration_seconds").notNull(),
+    /** "webm", "m4a" — kept to diagnose a platform, not to replay anything. */
+    audioFormat: text("audio_format"),
+    audioBytes: integer("audio_bytes"),
+    transcript: text("transcript"),
+    sttModel: text("stt_model"),
+    /** Audio seconds as the provider measured them, and its own cost report. */
+    sttSeconds: real("stt_seconds"),
+    sttCostUsd: doublePrecision("stt_cost_usd"),
+    /** An internal code for a failed transcription. Never shown to a learner. */
+    failureReason: text("failure_reason"),
+    /**
+     * The tracker session this attempt produced, once it completed. Nullable
+     * because it does not exist until then, and unique because an attempt must
+     * never be able to count twice.
+     */
+    trackerSessionId: uuid("tracker_session_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    /** One attempt per client submission, per account. The idempotency key. */
+    uniqueIndex("speaking_attempts_user_request_unique").on(table.userId, table.clientRequestId),
+    index("speaking_attempts_user_created_at_idx").on(table.userId, table.createdAt),
+    /**
+     * The same composite reference the tracker and Writing use: it is
+     * structurally impossible to file a spoken answer against somebody else's
+     * language, whatever a future code path might try to insert.
+     */
+    foreignKey({
+      columns: [table.userId, table.userLanguageId],
+      foreignColumns: [userLanguages.userId, userLanguages.id],
+      name: "speaking_attempts_user_language_belongs_to_user_fk",
+    }).onDelete("cascade"),
+    /**
+     * The tracker session this attempt produced.
+     *
+     * A single-column reference, deliberately, where the language above is a
+     * composite one. `ON DELETE SET NULL` on a composite key nulls *every*
+     * column in it — including `user_id`, which is NOT NULL — so a composite
+     * reference here would make deleting a session fail, or corrupt the row if
+     * it did not. The ownership it would have bought is already guaranteed
+     * without it: the session is created by `linkTrackerSession` inside a
+     * transaction, from the attempt's own `user_id`, and no client ever supplies
+     * a session id.
+     */
+    foreignKey({
+      columns: [table.trackerSessionId],
+      foreignColumns: [sessions.id],
+      name: "speaking_attempts_tracker_session_fk",
+    }).onDelete("set null"),
+    /**
+     * "Exactly one tracker session per completed attempt", in the database
+     * rather than in hopeful application code. Two attempts can never point at
+     * one session, and the code only ever writes this column while it is null.
+     */
+    uniqueIndex("speaking_attempts_tracker_session_unique")
+      .on(table.trackerSessionId)
+      .where(sql`${table.trackerSessionId} is not null`),
+    /**
+     * Mirrors MAX_SPEAKING_SECONDS in features/speaking/domain/recording.ts,
+     * with a second of slack for a final chunk that lands past the cap.
+     */
+    check("speaking_attempts_duration_range", sql`${table.durationSeconds} between 1 and 91`),
+    /** A completed attempt without its transcript would render as an empty screen. */
+    check(
+      "speaking_attempts_transcribed_has_text",
+      sql`${table.status} in ('transcribing', 'failed') or ${table.transcript} is not null`,
+    ),
+  ],
+);
+
+export const speakingReviews = pgTable(
+  "speaking_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Unique: one review per attempt, and the row is the claim that makes a
+     *  double submission harmless — exactly as writing_reviews works. */
+    attemptId: uuid("attempt_id")
+      .notNull()
+      .unique()
+      .references(() => speakingAttempts.id, { onDelete: "cascade" }),
+    status: speakingReviewStatusEnum("status").notNull().default("pending"),
+    /** Whatever answered, as the provider reported it — not what we asked for. */
+    model: text("model").notNull(),
+    summary: text("summary"),
+    /** The learner's own answer, said well. In the language being learned. */
+    improvedAnswer: text("improved_answer"),
+    /** Whether the answer addressed its topic, and a sentence about it. */
+    contentVerdict: speakingContentVerdictEnum("content_verdict"),
+    contentComment: text("content_comment"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("speaking_reviews_created_at_idx").on(table.createdAt),
+    check(
+      "speaking_reviews_completed_has_content",
+      sql`${table.status} <> 'completed' or (${table.summary} is not null and ${table.improvedAnswer} is not null)`,
+    ),
+  ],
+);
+
+/**
+ * One problem found in a spoken answer.
+ *
+ * The category and severity columns are Writing's enums, reused rather than
+ * duplicated. That is deliberate: a learner who drops articles drops them in
+ * both skills, and the mistake engine has to count that as one weak point. Two
+ * parallel enums with identical values would halve every total for good. The
+ * type names are historical — Writing declared them first — and renaming a live
+ * enum is an expand-and-contract migration that would buy nothing today.
+ */
+export const speakingIssues = pgTable(
+  "speaking_issues",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reviewId: uuid("review_id")
+      .notNull()
+      .references(() => speakingReviews.id, { onDelete: "cascade" }),
+    /** Display and grouping order, as the review returned them. */
+    position: integer("position").notNull(),
+    category: writingIssueCategoryEnum("category").notNull(),
+    label: text("label"),
+    severity: writingIssueSeverityEnum("severity").notNull(),
+    originalFragment: text("original_fragment").notNull(),
+    suggestion: text("suggestion").notNull(),
+    explanation: text("explanation").notNull(),
+    /**
+     * Where the fragment sits in the transcript, in UTF-16 code units —
+     * resolved by us, never taken from the model. Null when it could not be
+     * placed, which costs the issue its highlight and nothing else.
+     */
+    startOffset: integer("start_offset"),
+    endOffset: integer("end_offset"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("speaking_issues_review_id_idx").on(table.reviewId, table.position),
+    check(
+      "speaking_issues_offsets_paired",
+      sql`(${table.startOffset} is null) = (${table.endOffset} is null)`,
+    ),
+    check(
+      "speaking_issues_offsets_ordered",
+      sql`${table.startOffset} is null or (${table.startOffset} >= 0 and ${table.endOffset} > ${table.startOffset})`,
+    ),
+  ],
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   languages: many(userLanguages),
   sessions: many(sessions),
   authSessions: many(authSessions),
   writingEntries: many(writingEntries),
+  speakingAttempts: many(speakingAttempts),
 }));
 
 export const authSessionsRelations = relations(authSessions, ({ one }) => ({
@@ -432,3 +663,6 @@ export type SessionRow = typeof sessions.$inferSelect;
 export type WritingEntryRow = typeof writingEntries.$inferSelect;
 export type WritingReviewRow = typeof writingReviews.$inferSelect;
 export type WritingIssueRow = typeof writingIssues.$inferSelect;
+export type SpeakingAttemptRow = typeof speakingAttempts.$inferSelect;
+export type SpeakingReviewRow = typeof speakingReviews.$inferSelect;
+export type SpeakingIssueRow = typeof speakingIssues.$inferSelect;

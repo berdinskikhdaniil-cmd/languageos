@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
+import { RecentSpeaking } from "@/features/speaking/components/recent-speaking";
+import {
+  getRecentSpeakingAttempts,
+  type RecentSpeakingAttempt,
+} from "@/features/speaking/data/attempts";
+import { speakingAvailableFor } from "@/features/speaking/domain/topics";
 import { RecentWriting } from "@/features/writing/components/recent-writing";
 import { getRecentWritingEntries, type RecentWritingEntry } from "@/features/writing/data/entries";
 import { resolvePageAccess } from "@/lib/auth/page-access";
@@ -20,25 +26,34 @@ export default async function PracticePage() {
   const messages = getMessages(language);
 
   /**
-   * Both ids come from the server's own user context. The list is scoped to the
-   * language being studied as well as to the account, so switching languages
-   * later shows that language's work rather than everything ever written.
-   *
-   * A failure here costs the list, not the page: "Start writing" is what this
-   * screen is for, and it should survive a query that did not answer.
+   * Both lists are scoped to the account and to the language being studied, and
+   * both ids come from the server's own user context. A failure costs the list,
+   * not the page: the two "start" buttons are what this screen is for, and they
+   * should survive a query that did not answer.
    */
-  let recent: RecentWritingEntry[] = [];
+  let recentWriting: RecentWritingEntry[] = [];
+  let recentSpeaking: RecentSpeakingAttempt[] = [];
+
   if (access.status === "ready") {
+    const scope = {
+      userId: access.user.id,
+      userLanguageId: access.user.primaryLanguage.id,
+    };
+
     try {
-      recent = await getRecentWritingEntries({
-        userId: access.user.id,
-        userLanguageId: access.user.primaryLanguage.id,
-      });
+      [recentWriting, recentSpeaking] = await Promise.all([
+        getRecentWritingEntries(scope),
+        getRecentSpeakingAttempts(scope),
+      ]);
     } catch (error) {
       unstable_rethrow(error);
-      console.error("[practice] could not read recent writing", error);
+      console.error("[practice] could not read recent practice", error);
     }
   }
+
+  /** Speaking asks its questions in the language being learned. See domain/topics. */
+  const speakingReady =
+    access.status === "ready" && speakingAvailableFor(access.user.primaryLanguage.code);
 
   return (
     <div className="flex flex-col gap-8 pt-3">
@@ -67,7 +82,7 @@ export default async function PracticePage() {
 
         {access.status === "ready" ? (
           <RecentWriting
-            entries={recent}
+            entries={recentWriting}
             timeZone={access.user.timeZone}
             language={access.user.uiLanguage}
             now={new Date()}
@@ -76,12 +91,38 @@ export default async function PracticePage() {
       </section>
 
       <section>
-        <h2 className="text-[1.0625rem] font-bold tracking-[-0.02em] text-muted">
+        <h2
+          className={
+            speakingReady
+              ? "text-[1.0625rem] font-bold tracking-[-0.02em]"
+              : "text-[1.0625rem] font-bold tracking-[-0.02em] text-muted"
+          }
+        >
           {messages.practice.speakingHeading}
         </h2>
-        <p className="mt-1.5 max-w-[24rem] text-[0.9375rem] leading-[1.5] text-faint">
-          {messages.practice.speakingSoon}
+        <p className="mt-1.5 max-w-[24rem] text-[0.9375rem] leading-[1.5] text-muted">
+          {speakingReady ? messages.speaking.intro : messages.speaking.unavailableForLanguage}
         </p>
+
+        {speakingReady ? (
+          <>
+            <Link
+              href="/practice/speaking"
+              className="mt-4 flex h-14 w-full items-center justify-center rounded-[var(--radius-control)] bg-accent px-4 text-center text-[0.9375rem] font-bold leading-tight text-accent-ink transition-colors active:bg-accent-pressed"
+            >
+              {messages.practice.startSpeaking}
+            </Link>
+
+            {access.status === "ready" ? (
+              <RecentSpeaking
+                attempts={recentSpeaking}
+                timeZone={access.user.timeZone}
+                language={access.user.uiLanguage}
+                now={new Date()}
+              />
+            ) : null}
+          </>
+        ) : null}
       </section>
     </div>
   );

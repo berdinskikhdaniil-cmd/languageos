@@ -19,7 +19,9 @@ export function demoCoachInsight(messages: Messages): CoachInsight {
     headline: messages.dashboard.demo.coachHeadline,
     detail: messages.dashboard.demo.coachDetail,
     actionLabel: messages.dashboard.demo.coachAction,
-    actionHref: "/practice",
+    // The copy is still illustrative, but the button it offers now goes
+    // somewhere real: speaking practice exists.
+    actionHref: "/practice/speaking",
   };
 }
 

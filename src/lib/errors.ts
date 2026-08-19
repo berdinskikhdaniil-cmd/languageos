@@ -58,6 +58,26 @@ export const APP_ERROR_CODES = [
   /* Settings. */
   "UI_LANGUAGE_INVALID",
   "SETTINGS_SAVE_FAILED",
+
+  /* Speaking: the microphone, before anything is recorded. */
+  "MIC_UNSUPPORTED",
+  "MIC_DENIED",
+  "MIC_FAILED",
+
+  /* Speaking: the recording itself. */
+  "RECORDING_EMPTY",
+  "RECORDING_TOO_SHORT",
+  "RECORDING_TOO_LONG",
+  "RECORDING_TOO_LARGE",
+  "RECORDING_FORMAT_UNSUPPORTED",
+
+  /* Speaking: the submission. */
+  "SPEAKING_LANGUAGE_UNAVAILABLE",
+  "SPEAKING_NOT_CONFIGURED",
+  "SPEAKING_TOPIC_REQUIRED",
+  "SPEAKING_ATTEMPT_NOT_FOUND",
+  "SPEAKING_UPLOAD_FAILED",
+  "SPEAKING_REVIEW_FAILED",
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];

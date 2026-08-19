@@ -185,6 +185,16 @@ Never commit real values. `.env` is gitignored, and `.env.example` is the templa
 
 ## Known limitations
 
+- Speaking practice needs `OPENROUTER_STT_MODEL` as well as `OPENROUTER_MODEL`;
+  without it the rest of the app works and Speaking says it is not switched on.
+  It also needs topics written in the language being learned, and those exist
+  only for English so far — other languages are told so plainly.
+- Recording needs a **secure context**: browsers only expose a microphone over
+  HTTPS (or on `localhost`). A self-hosted copy served over plain HTTP will show
+  the "this browser cannot record audio" state and nothing else.
+- Audio is never written to disk or to the database. It reaches the server,
+  goes to the transcription model, and is discarded; only the transcript, the
+  duration and the review are kept.
 - Onboarding runs once and cannot be revisited: there is no way to change the language
   you are learning, your timezone or your daily goal afterwards, and no way to study a
   second language. Settings holds the interface language and nothing else.

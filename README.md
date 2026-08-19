@@ -46,6 +46,14 @@ infrastructure. It runs the same code as this repository.
 - **Daily and weekly totals** — today and this week, with a real previous-week
   comparison, drawn against the daily goal that was chosen during setup. Day and week
   boundaries are computed in the user's own timezone, not the server's.
+- **Speaking with AI feedback** — get a topic, record an answer out loud, and read
+  back what you actually said. The recording is transcribed, the transcript is
+  reviewed as *spoken* language — filler and false starts are not treated as
+  mistakes — and the corrections are marked in your own words, with a verdict on
+  whether you answered the question and a better way to say the same thing.
+  Recordings are capped at 90 seconds, and the audio is never stored: it is
+  transcribed and discarded. Pronunciation is **not** assessed — a transcript is
+  text, and text cannot show how you sounded.
 - **Settings** — one setting so far: the language the interface is drawn in.
 - **Telegram bot** — `/start` and `/help`, a button that opens the Mini App, and a
   webhook that verifies Telegram's secret header.

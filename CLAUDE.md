@@ -49,10 +49,17 @@ Versions come from `package.json` — check there rather than assuming.
 - AI: OpenRouter's chat-completions endpoint through a small typed `fetch` client in
   `src/lib/ai/openrouter.ts` — no AI SDK, no agent framework. The model is
   `OPENROUTER_MODEL` and is never hardcoded in feature code
+- Speech to text: OpenRouter's `POST /api/v1/audio/transcriptions`, multipart, through
+  a second small client in `src/lib/ai/transcription.ts`. The model is
+  `OPENROUTER_STT_MODEL` — a separate variable from the chat model, because they are
+  separate rosters and an installation may have one and not the other
 
 ## 4. What exists today
 
-Working: writing practice with real AI review — free writing or a retelling goes
+Working: speaking practice — a topic, a recording made in the browser, a
+transcript from OpenRouter and a review of it as *spoken* language, with the
+mistakes marked in the learner's own words and the time filed to the tracker;
+writing practice with real AI review — free writing or a retelling goes
 to OpenRouter, comes back as a structured review, and is stored with its issues,
 their positions in the text and the learner's own rewrite; a Russian and an English
 interface, chosen in Settings and stored on the account; first-run onboarding — a new account picks the language it is learning,
@@ -75,7 +82,8 @@ not exist yet; do not write copy that implies it does.
 **Demo content, not functionality** — marked as such in
 `src/features/dashboard/demo-analytics.ts`: the Coach recommendation and the
 Errors / 1000 words trend. Never present either as a working feature. Not built at
-all: Speaking, vocabulary and SRS, the mistake engine, notifications, payments.
+all: vocabulary and SRS, the mistake engine, notifications, payments. Speaking
+assesses language, never pronunciation.
 Writing stores its issues, which is the ground the mistake engine will stand on,
 but nothing aggregates them yet — Practice lists the last three pieces of writing and
 nothing more: there is no full writing history or catalogue, no second review after a
@@ -163,6 +171,36 @@ must therefore leave the previous deployment working. Expand, then contract:
 A rename is an add, a backfill, a code switch and a drop, spread across
 iterations; never one migration. Dropping a column, dropping a table or deleting
 rows needs explicit agreement from the user first — say what will be lost and wait.
+
+**Speaking keeps no audio.** A recording is uploaded to
+`/api/speaking/attempts`, transcribed, and the bytes are dropped — nothing writes
+them to a column, a bucket or a log. What is stored is the transcript, the duration
+and the review. The interface must never offer to replay an answer after the fact,
+because there is nothing to replay. Changing this is a privacy decision and needs
+the user's agreement first.
+
+**Speaking does not assess pronunciation.** The transcript is text, and text cannot
+show how a vowel was produced. No score, no accent rating, no fluency rating, and no
+promise of one later. The prompt forbids the model from commenting on it and the
+screen says plainly that it is not being judged. A future iteration may add it with
+an audio-capable model; until then, saying nothing would still let people assume
+otherwise, which is why the disclaimer is there.
+
+**Binary uploads go through a Route Handler, never a Server Action.** Actions cap
+request bodies at 1 MB; a Vercel function stops at 4.5 MB. Speaking's cap is 90
+seconds and `MAX_AUDIO_BYTES`, checked in the browser before the upload is spent and
+again on the server against the bytes that arrived — a client's own duration is a
+convenience, never the record. The transcriber's measured seconds replace it.
+
+**One tracker session per completed attempt.** Filed for the length of the recording,
+never for the processing time, and guaranteed by a row lock, a `where … is null`
+update and a partial unique index rather than by hopeful code. A retried review must
+never add a second one.
+
+**Speaking asks its questions in the language being learned.** The topic bank is
+keyed by learning language and only English is populated; `speakingAvailableFor()` is
+what stops English prompts being handed to somebody studying Japanese. Adding a
+language is adding an entry, never loosening the check.
 
 **AI output is never trusted.** A learner's text is untrusted content: it goes in
 the user message inside explicit markers, never in the system message, and the
@@ -343,6 +381,14 @@ say which you used.
   Switching afterwards does not retranslate it, and nothing regenerates an old review.
 - The interface speaks two languages. A third means a migration for the enum as well
   as a dictionary.
+- Speaking exists only for learners of English, because the topic bank does.
+- Speaking recordings are capped at 90 seconds and the audio is discarded after
+  transcription, so a failed transcription can only be answered by recording again.
+  A failed *review* is retryable from the stored transcript.
+- Pronunciation is not measured and is not claimed to be.
+- Transcription and review are two requests, so a learner who closes the Mini App
+  between them has a transcript with no review and a retry button; the time is not
+  filed to the tracker until the review completes.
 - The only guards on AI cost are a text-length cap, one review per entry and a
   per-user daily count (`WRITING_DAILY_REVIEW_LIMIT`). The daily count is a plain
   query rather than a rate limiter, so two requests racing at the boundary can both

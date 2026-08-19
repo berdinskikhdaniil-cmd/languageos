@@ -1,4 +1,6 @@
 import type { ActivityGroup, ActivityType } from "@/features/tracker/domain/activity";
+import type { SpeakingAttemptRow } from "@/db/schema";
+import type { ContentVerdict } from "@/features/speaking/domain/review";
 import type { WritingEntryStatus } from "@/features/writing/domain/entry-status";
 import type { IssueCategory, IssueSeverity } from "@/features/writing/domain/review";
 import {
@@ -32,6 +34,20 @@ import { pluralize } from "./plural";
  * Russian puts the pieces in a different order and a component has no business
  * knowing that.
  */
+
+/**
+ * Why a spoken answer did not get through. Two failures live in one record
+ * because one screen shows both — see speaking/domain/failures.
+ */
+export type SpeakingFailureKey =
+  | "notConfigured"
+  | "emptyTranscript"
+  | "busy"
+  | "timeout"
+  | "unavailable"
+  | "processing"
+  | "transcriptionFailed"
+  | "reviewFailed";
 
 /** Where a review that did not happen is explained. See writing/domain/failures. */
 export type ReviewFailureKey =
@@ -178,7 +194,7 @@ const en = {
       "Write something, and get it back with the mistakes marked, explained and corrected.",
     startWriting: "Start writing",
     speakingHeading: "Speaking",
-    speakingSoon: "Speaking practice is coming next.",
+    startSpeaking: "Start speaking",
     recentWriting: "Recent writing",
   },
 
@@ -283,6 +299,74 @@ const en = {
     } satisfies Record<ReviewFailureKey, string>,
   },
 
+  speaking: {
+    title: "Speaking",
+    intro: "Answer out loud, then read back what you actually said.",
+    unavailableForLanguage:
+      "Speaking practice is not available for this language yet. It needs topics written in the language you are learning, and so far we only have them in English.",
+    notConfigured: "Speaking is not switched on for this installation yet.",
+
+    topicHeading: "Topic",
+    anotherTopic: "Another topic",
+    startRecording: "Start recording",
+    recordingHeading: "Recording",
+    stop: "Stop",
+    secondsLeft: (seconds: number) => `${seconds}s left`,
+    listen: "Listen",
+    stopListening: "Stop",
+    recordAgain: "Record again",
+    submit: "Send for review",
+    micHint: "Your browser will ask for the microphone. Nothing is recorded until you allow it.",
+
+    transcribing: "Transcribing what you said…",
+    reviewing: "Reading your answer…",
+    processingNote: "This takes a few seconds. Keep the app open.",
+
+    transcriptHeading: "Transcript",
+    feedbackHeading: "Feedback",
+    notPronunciation: "This looks at your words and grammar. It does not judge your pronunciation.",
+    contentHeading: "As an answer",
+    verdicts: {
+      yes: "Answered the topic",
+      partly: "Partly answered the topic",
+      no: "Did not answer the topic",
+    } satisfies Record<ContentVerdict, string>,
+    betterAnswer: "A better way to say it",
+    tapHighlight: "Tap a highlighted phrase to see the correction.",
+    otherFeedback: "Other feedback",
+    unplacedNote: (count: number): string =>
+      count === 1
+        ? "This one could not be pinned to an exact phrase."
+        : "These could not be pinned to an exact phrase.",
+    nothingToFix: "Nothing to fix",
+    nothingToFixBody: "No concrete mistakes were found in this answer.",
+
+    retryReview: "Try the review again",
+    recordAnother: "Record another answer",
+    backToPractice: "Back to practice",
+    duration: (seconds: number) => `${seconds}s`,
+
+    recentSpeaking: "Recent answers",
+    statuses: {
+      transcribing: "Processing",
+      transcribed: "Needs review",
+      completed: "Reviewed",
+      failed: "Not transcribed",
+    } satisfies Record<SpeakingAttemptRow["status"], string>,
+
+    failures: {
+      notConfigured: "Speaking is not switched on for this installation yet.",
+      emptyTranscript:
+        "We could not hear any speech in that recording. Check your microphone and try again.",
+      busy: "The reviewer is busy right now. Try again in a minute.",
+      timeout: "That took too long to process. Try again.",
+      unavailable: "Speaking is unavailable on this installation right now.",
+      processing: "This is being reviewed right now. Give it a moment and reload.",
+      transcriptionFailed: "We could not turn that recording into text. Try recording it again.",
+      reviewFailed: "We heard you, but the review did not come back yet.",
+    } satisfies Record<SpeakingFailureKey, string>,
+  },
+
   onboarding: {
     stepOf: (step: number, total: number) => `${step} of ${total}`,
     languageTitle: "What language are you learning?",
@@ -373,6 +457,23 @@ const en = {
 
     UI_LANGUAGE_INVALID: "Choose one of the interface languages offered.",
     SETTINGS_SAVE_FAILED: "Could not save that. Try again.",
+
+    MIC_UNSUPPORTED: "This browser cannot record audio. Try opening the app in Telegram.",
+    MIC_DENIED: "Microphone access was refused. Allow it in your settings and try again.",
+    MIC_FAILED: "The microphone could not be started. Check nothing else is using it.",
+
+    RECORDING_EMPTY: "Nothing was recorded.",
+    RECORDING_TOO_SHORT: "That recording is too short. Speak for at least a few seconds.",
+    RECORDING_TOO_LONG: "That recording is too long.",
+    RECORDING_TOO_LARGE: "That recording is too large to send.",
+    RECORDING_FORMAT_UNSUPPORTED: "This device recorded in a format we cannot read yet.",
+
+    SPEAKING_LANGUAGE_UNAVAILABLE: "Speaking practice is not available for this language yet.",
+    SPEAKING_NOT_CONFIGURED: "Speaking is not switched on for this installation yet.",
+    SPEAKING_TOPIC_REQUIRED: "Pick a topic to answer first.",
+    SPEAKING_ATTEMPT_NOT_FOUND: "That answer could not be found.",
+    SPEAKING_UPLOAD_FAILED: "Could not send that recording. Try again.",
+    SPEAKING_REVIEW_FAILED: "Could not review that answer. Try again.",
   } satisfies Record<AppErrorCode, string>,
 };
 
@@ -518,7 +619,7 @@ const ru: Messages = {
     writingIntro: "Напишите текст и получите его обратно с разобранными ошибками.",
     startWriting: "Начать писать",
     speakingHeading: "Говорение",
-    speakingSoon: "Практика говорения появится следующей.",
+    startSpeaking: "Начать говорить",
     recentWriting: "Последние тексты",
   },
 
@@ -624,6 +725,76 @@ const ru: Messages = {
     } satisfies Record<ReviewFailureKey, string>,
   },
 
+  speaking: {
+    title: "Практика речи",
+    intro: "Ответьте вслух, а потом прочитайте, что у вас получилось.",
+    unavailableForLanguage:
+      "Практика речи для этого языка пока недоступна. Для неё нужны темы на изучаемом языке, а они у нас пока только на английском.",
+    notConfigured: "Практика речи в этой установке пока не включена.",
+
+    topicHeading: "Тема",
+    anotherTopic: "Другая тема",
+    startRecording: "Начать запись",
+    recordingHeading: "Запись",
+    stop: "Остановить",
+    secondsLeft: (seconds: number) => `осталось ${seconds} с`,
+    listen: "Прослушать",
+    stopListening: "Стоп",
+    recordAgain: "Перезаписать",
+    submit: "Отправить на проверку",
+    micHint: "Браузер спросит разрешение на микрофон. До этого ничего не записывается.",
+
+    transcribing: "Распознаём речь…",
+    reviewing: "Разбираем ответ…",
+    processingNote: "Это займёт несколько секунд. Не закрывайте приложение.",
+
+    transcriptHeading: "Расшифровка",
+    feedbackHeading: "Разбор",
+    notPronunciation: "Мы смотрим на слова и грамматику. Произношение мы не оцениваем.",
+    // Not "Ответ по теме": that is the verdict directly beneath it, and a
+    // heading that repeats its own answer reads as a stutter.
+    contentHeading: "Содержание",
+    verdicts: {
+      yes: "Ответ по теме",
+      partly: "Частично по теме",
+      no: "Ответ не по теме",
+    } satisfies Record<ContentVerdict, string>,
+    betterAnswer: "Как сказать лучше",
+    tapHighlight: "Нажмите на подчёркнутую фразу, чтобы увидеть исправление.",
+    otherFeedback: "Остальные замечания",
+    unplacedNote: (count: number): string =>
+      count === 1
+        ? "Это замечание не удалось привязать к точной фразе."
+        : "Эти замечания не удалось привязать к точным фразам.",
+    nothingToFix: "Исправлять нечего",
+    nothingToFixBody: "Конкретных ошибок в этом ответе не нашлось.",
+
+    retryReview: "Попробовать снова",
+    recordAnother: "Записать ещё один ответ",
+    backToPractice: "Вернуться к практике",
+    duration: (seconds: number) => `${seconds} с`,
+
+    recentSpeaking: "Последние ответы",
+    statuses: {
+      transcribing: "Обрабатываем",
+      transcribed: "Нужен разбор",
+      completed: "Разобрано",
+      failed: "Не распозналось",
+    } satisfies Record<SpeakingAttemptRow["status"], string>,
+
+    failures: {
+      notConfigured: "Практика речи в этой установке пока не включена.",
+      emptyTranscript:
+        "В этой записи не слышно речи. Проверьте микрофон и попробуйте снова.",
+      busy: "Разбор сейчас занят. Попробуйте через минуту.",
+      timeout: "Обработка заняла слишком много времени. Попробуйте снова.",
+      unavailable: "Практика речи в этой установке сейчас недоступна.",
+      processing: "Этот ответ разбирается прямо сейчас. Подождите немного и перезагрузите страницу.",
+      transcriptionFailed: "Не удалось перевести запись в текст. Попробуйте записать ещё раз.",
+      reviewFailed: "Речь распознана, но разбор пока не удалось получить.",
+    } satisfies Record<SpeakingFailureKey, string>,
+  },
+
   onboarding: {
     stepOf: (step: number, total: number) => `${step} из ${total}`,
     languageTitle: "Какой язык вы учите?",
@@ -715,6 +886,23 @@ const ru: Messages = {
 
     UI_LANGUAGE_INVALID: "Выберите один из предложенных языков интерфейса.",
     SETTINGS_SAVE_FAILED: "Не удалось это сохранить. Попробуйте снова.",
+
+    MIC_UNSUPPORTED: "Этот браузер не умеет записывать звук. Откройте приложение в Telegram.",
+    MIC_DENIED: "Доступ к микрофону запрещён. Разрешите его в настройках и попробуйте снова.",
+    MIC_FAILED: "Не удалось включить микрофон. Проверьте, что его не занимает другое приложение.",
+
+    RECORDING_EMPTY: "Ничего не записалось.",
+    RECORDING_TOO_SHORT: "Запись слишком короткая. Говорите хотя бы несколько секунд.",
+    RECORDING_TOO_LONG: "Запись слишком длинная.",
+    RECORDING_TOO_LARGE: "Запись слишком большая, чтобы её отправить.",
+    RECORDING_FORMAT_UNSUPPORTED: "Это устройство записало звук в формате, который мы пока не читаем.",
+
+    SPEAKING_LANGUAGE_UNAVAILABLE: "Практика речи для этого языка пока недоступна.",
+    SPEAKING_NOT_CONFIGURED: "Практика речи в этой установке пока не включена.",
+    SPEAKING_TOPIC_REQUIRED: "Сначала выберите тему.",
+    SPEAKING_ATTEMPT_NOT_FOUND: "Этот ответ не найден.",
+    SPEAKING_UPLOAD_FAILED: "Не удалось отправить запись. Попробуйте снова.",
+    SPEAKING_REVIEW_FAILED: "Не удалось разобрать ответ. Попробуйте снова.",
   } satisfies Record<AppErrorCode, string>,
 };
 
