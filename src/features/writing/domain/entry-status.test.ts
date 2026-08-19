@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { WRITING_ENTRY_STATUS_LABELS, writingEntryStatus } from "./entry-status";
+import { getMessages } from "@/lib/i18n/messages";
+import { writingEntryStatus } from "./entry-status";
 
 const GOOD_REVIEW = {
   status: "completed" as const,
@@ -85,10 +86,18 @@ describe("an entry the learner went back and fixed", () => {
 
 describe("the words shown to the learner", () => {
   it("are sentence case and say what they mean", () => {
-    expect(WRITING_ENTRY_STATUS_LABELS).toEqual({
+    expect(getMessages("en").writing.entryStatuses).toEqual({
       needs_review: "Needs review",
       reviewed: "Reviewed",
       rewritten: "Rewritten",
+    });
+  });
+
+  it("are translated without the stored status changing", () => {
+    expect(getMessages("ru").writing.entryStatuses).toEqual({
+      needs_review: "Нужен разбор",
+      reviewed: "Разобрано",
+      rewritten: "Переписано",
     });
   });
 });

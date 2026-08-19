@@ -9,6 +9,7 @@ function user(overrides: Partial<CurrentUser> = {}): CurrentUser {
     id: "user-1",
     firstName: "Anna",
     lastName: null,
+    uiLanguage: "en",
     timeZone: "Europe/Amsterdam",
     primaryLanguage: LANGUAGE,
     onboardingCompletedAt: new Date("2026-08-18T10:00:00Z"),

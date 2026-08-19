@@ -54,7 +54,8 @@ Versions come from `package.json` — check there rather than assuming.
 
 Working: writing practice with real AI review — free writing or a retelling goes
 to OpenRouter, comes back as a structured review, and is stored with its issues,
-their positions in the text and the learner's own rewrite; first-run onboarding — a new account picks the language it is learning,
+their positions in the text and the learner's own rewrite; a Russian and an English
+interface, chosen in Settings and stored on the account; first-run onboarding — a new account picks the language it is learning,
 confirms the timezone its device reports and chooses a daily goal, all written in
 one transaction before any other screen opens; mobile-first dashboard shell;
 persistent tracker on PostgreSQL; timed sessions (start / stop / discard) and
@@ -76,9 +77,11 @@ not exist yet; do not write copy that implies it does.
 Errors / 1000 words trend. Never present either as a working feature. Not built at
 all: Speaking, vocabulary and SRS, the mistake engine, notifications, payments.
 Writing stores its issues, which is the ground the mistake engine will stand on,
-but nothing aggregates them yet — there is no writing history, no second review
-after a rewrite and no analytics over past work. Onboarding sets a language, a timezone and a goal once;
-nothing can change any of the three afterwards, because settings do not exist. The bot logs nothing and parses no
+but nothing aggregates them yet — Practice lists the last three pieces of writing and
+nothing more: there is no full writing history or catalogue, no second review after a
+rewrite and no analytics over past work. Onboarding sets a language, a timezone and a
+goal once, and none of the three can be changed afterwards — Settings exists, but the
+only thing in it is the interface language. The bot logs nothing and parses no
 natural language: it answers two commands and stays quiet otherwise.
 
 ## 5. Architecture invariants
@@ -99,6 +102,29 @@ day. `users.onboardingCompletedAt` is the record of it; the presence of a cookie
 session or a language row is not. Every route resolves its own access through
 `resolvePageAccess()` and sends an unfinished account to `/onboarding`; the layout
 swapping its chrome is presentation, never the boundary.
+
+**Interface language.** `users.ui_language` is the only source of truth for it, and
+it holds `en` or `ru` — the two the product speaks. Telegram's `language_code` is a
+*one-time hint*: it seeds the column on the row `findOrCreateTelegramUser` creates, so
+a Russian client reads its first onboarding screen in Russian, and it never writes
+there again. A returning sign-in refreshes the mirrored profile and leaves the
+preference alone; nothing but Settings may overwrite an explicit choice.
+
+The language is resolved on the server, from the authenticated user, and passed down:
+a server component calls `getMessages(user.uiLanguage)`, a client component reads
+`useMessages()` from the provider the root layout renders. Never render English and
+correct it after hydration.
+
+**Localisation is display text only.** Every user-facing string lives in
+`src/lib/i18n/messages.ts`, English first with Russian checked against it by the
+compiler (`Messages = typeof en`). Never write a user-facing sentence into a
+component, and never let a translation reach storage: activity types, writing types,
+issue categories, severities, review status, skill labels and ISO language codes stay
+canonical in the database whatever the interface says. A server action returns an
+`AppErrorCode`, not a sentence — the screen is the only place that knows who is
+reading. Counted nouns go through `Intl.PluralRules`, dates and weekday names through
+`Intl.DateTimeFormat`, and the name of the language being learned through
+`Intl.DisplayNames`; do not hand-write a plural table or a case table.
 
 **Telegram authentication.** `initDataUnsafe` is never an authentication source.
 The chain is raw `Telegram.WebApp.initData` → server-side validation → internal
@@ -308,11 +334,15 @@ say which you used.
   yet (see the session-lifecycle limitation below).
 - The bot is a door, not a feature surface: no logging by message, no voice, no
   reminders, and `/start` payloads are parsed but unused.
-- Onboarding is one-way: nobody can change their language, timezone or daily goal
-  afterwards, and there is no second language. `DEFAULT_TIMEZONE` now only seeds the
-  development account.
-- Writing has no history screen: an entry is reachable only from the review it was
-  just given, and nothing lists past work. The rows are there; the route is not.
+- Onboarding is one-way: nobody can change their learning language, timezone or daily
+  goal afterwards, and there is no second language. Settings holds the interface
+  language and nothing else. `DEFAULT_TIMEZONE` now only seeds the development account.
+- Writing has no history screen: Practice lists the last three entries and there is no
+  route behind them — no full catalogue, no paging, no filter. The rows are there.
+- A review is written in whatever interface language the learner had when it ran.
+  Switching afterwards does not retranslate it, and nothing regenerates an old review.
+- The interface speaks two languages. A third means a migration for the enum as well
+  as a dictionary.
 - The only guards on AI cost are a text-length cap, one review per entry and a
   per-user daily count (`WRITING_DAILY_REVIEW_LIMIT`). The daily count is a plain
   query rather than a rate limiter, so two requests racing at the boundary can both

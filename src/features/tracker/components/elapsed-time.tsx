@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatElapsed } from "@/lib/format";
+import { useMessages } from "@/lib/i18n/locale-context";
 
 /**
  * Renders a running clock from a server-provided baseline.
@@ -15,6 +16,7 @@ import { formatElapsed } from "@/lib/format";
  * component with the new baseline instead of waiting a tick to correct itself.
  */
 export function ElapsedTime({ baselineSeconds }: { baselineSeconds: number }) {
+  const messages = useMessages();
   const [seconds, setSeconds] = useState(baselineSeconds);
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export function ElapsedTime({ baselineSeconds }: { baselineSeconds: number }) {
   return (
     <>
       <span aria-hidden>{formatElapsed(seconds)}</span>
-      <span className="sr-only">{Math.floor(seconds / 60)} minutes elapsed</span>
+      <span className="sr-only">{messages.tracker.minutesElapsed(Math.floor(seconds / 60))}</span>
     </>
   );
 }

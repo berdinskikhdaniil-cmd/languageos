@@ -1,3 +1,4 @@
+import type { AppErrorCode } from "@/lib/errors";
 import { countWords } from "./word-count";
 
 /**
@@ -13,11 +14,6 @@ import { countWords } from "./word-count";
 export const WRITING_TYPES = ["free_writing", "retelling"] as const;
 
 export type WritingType = (typeof WRITING_TYPES)[number];
-
-export const WRITING_TYPE_LABELS: Record<WritingType, string> = {
-  free_writing: "Free writing",
-  retelling: "Retelling",
-};
 
 /**
  * Long enough that a review has something to say; short enough that a stray tap
@@ -58,7 +54,7 @@ export type WritingTextField = "text" | "type";
 
 export type WritingTextResult =
   | { ok: true; value: { text: string; wordCount: number } }
-  | { ok: false; field: WritingTextField; message: string };
+  | { ok: false; field: WritingTextField; code: AppErrorCode };
 
 /**
  * Validates and normalises a submission.
@@ -72,25 +68,17 @@ export function validateWritingText(
   locale?: string,
 ): WritingTextResult {
   if (typeof raw !== "string") {
-    return { ok: false, field: "text", message: "Write something first." };
+    return { ok: false, field: "text", code: "WRITING_TEXT_REQUIRED" };
   }
 
   const text = raw.trim();
 
   if (text.length < MIN_WRITING_CHARS) {
-    return {
-      ok: false,
-      field: "text",
-      message: `Write a little more — at least ${MIN_WRITING_CHARS} characters.`,
-    };
+    return { ok: false, field: "text", code: "WRITING_TOO_SHORT" };
   }
 
   if (text.length > MAX_WRITING_CHARS) {
-    return {
-      ok: false,
-      field: "text",
-      message: `That is longer than ${MAX_WRITING_CHARS.toLocaleString("en-GB")} characters. Review it in parts.`,
-    };
+    return { ok: false, field: "text", code: "WRITING_TOO_LONG" };
   }
 
   return { ok: true, value: { text, wordCount: countWords(text, locale) } };

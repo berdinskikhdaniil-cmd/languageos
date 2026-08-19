@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { userLanguages, users } from "@/db/schema";
+import type { UiLanguage } from "@/lib/i18n/locale";
 
 /**
  * Throwaway accounts for integration tests. Each gets a real row and its own
@@ -19,7 +20,12 @@ export type TestAccount = {
 
 export async function createTestAccount(
   label: string,
-  options: { timeZone?: string; dailyGoalMinutes?: number } = {},
+  options: {
+    timeZone?: string;
+    dailyGoalMinutes?: number;
+    /** Left to the column default — English — unless a test is about it. */
+    uiLanguage?: UiLanguage;
+  } = {},
 ): Promise<TestAccount> {
   const [user] = await db
     .insert(users)
@@ -27,6 +33,7 @@ export async function createTestAccount(
       firstName: label,
       timezone: options.timeZone ?? "UTC",
       onboardingCompletedAt: new Date(),
+      ...(options.uiLanguage === undefined ? {} : { uiLanguage: options.uiLanguage }),
     })
     .returning();
 

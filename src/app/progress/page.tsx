@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { PlaceholderScreen } from "@/components/layout/placeholder-screen";
 import { resolvePageAccess } from "@/lib/auth/page-access";
+import { getMessages } from "@/lib/i18n/messages";
 
 export const metadata: Metadata = { title: "Progress" };
 
@@ -16,10 +17,14 @@ export default async function ProgressPage() {
   if (access.status === "onboarding-required") redirect("/onboarding");
   if (access.status === "signed-out") return null;
 
+  const { placeholders } = getMessages(
+    access.status === "ready" ? access.user.uiLanguage : undefined,
+  );
+
   return (
     <PlaceholderScreen
-      title="Progress"
-      description="Hours with the language, error rates by category, and your first recording next to your latest one."
+      title={placeholders.progress.title}
+      description={placeholders.progress.description}
     />
   );
 }

@@ -2,8 +2,9 @@
 
 import type { KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
+import { useMessages } from "@/lib/i18n/locale-context";
 import { splitByHighlights, type FragmentSpan } from "../domain/fragments";
-import type { IssueSeverity } from "../domain/review";
+import type { IssueCategory, IssueSeverity } from "../domain/review";
 import { HIGHLIGHT_BASE_CLASS, severityStyle } from "../domain/severity-style";
 
 /**
@@ -28,8 +29,14 @@ export type HighlightSpan = {
   span: FragmentSpan;
   issueIndex: number;
   severity: IssueSeverity;
-  /** Read out instead of the bare fragment, so the mark means something. */
-  label: string;
+  /**
+   * What the mark is about, as data. The screen-reader phrase is built from it
+   * here, in the reader's own language — the view model carries a stored
+   * category identifier and the model's canonical English skill label, not a
+   * sentence somebody has to translate twice.
+   */
+  category: IssueCategory;
+  label: string | null;
 };
 
 export function HighlightedText({
@@ -43,6 +50,7 @@ export function HighlightedText({
   selectedIndex: number | null;
   onSelect: (issueIndex: number) => void;
 }) {
+  const messages = useMessages();
   const parts = splitByHighlights(text, spans);
 
   return (
@@ -70,7 +78,14 @@ export function HighlightedText({
             role="button"
             tabIndex={0}
             aria-pressed={selected}
-            aria-label={`${part.text} — ${highlight.label}`}
+            aria-label={messages.writing.highlightLabel(
+              part.text,
+              messages.writing.highlightDescription(
+                [messages.writing.categories[highlight.category], highlight.label].filter(
+                  (piece): piece is string => Boolean(piece),
+                ),
+              ),
+            )}
             onClick={activate}
             onKeyDown={onKeyDown}
             className={cn(

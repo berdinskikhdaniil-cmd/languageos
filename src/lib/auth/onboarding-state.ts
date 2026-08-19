@@ -1,3 +1,5 @@
+import type { UiLanguage } from "@/lib/i18n/locale";
+
 /**
  * What "set up" means, as a rule rather than a query.
  *
@@ -19,6 +21,13 @@ export type CurrentUser = {
   id: string;
   firstName: string | null;
   lastName: string | null;
+  /**
+   * The language the interface is drawn in. Present from the very first
+   * request, before any language is chosen and before onboarding runs — an
+   * account that is authenticated but not set up still has to read its setup
+   * screens in something.
+   */
+  uiLanguage: UiLanguage;
   /**
    * IANA zone. Only meaningful once onboarding has run — before that it is the
    * column's "UTC" placeholder, which is why nothing that computes a day or a

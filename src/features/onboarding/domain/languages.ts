@@ -127,14 +127,24 @@ export function isSupportedLanguageCode(code: unknown): code is string {
 /**
  * Case- and accent-insensitive search over names, aliases and the code itself.
  * An empty query means "show the popular ones", not "show all 50".
+ *
+ * `displayName` is optional and is how the reader's own language joins the
+ * search: the picker passes the localised name, so a Russian interface finds
+ * "Немецкий" as readily as "German" or "Deutsch". It is a presentation concern
+ * injected by the caller rather than a second list here, because this module's
+ * business is the codes and the English names that get stored.
  */
-export function searchLanguages(query: string): readonly SupportedLanguage[] {
+export function searchLanguages(
+  query: string,
+  displayName?: (language: SupportedLanguage) => string,
+): readonly SupportedLanguage[] {
   const needle = normalise(query);
   if (needle === "") return POPULAR_LANGUAGES;
 
   return SUPPORTED_LANGUAGES.filter((language) => {
     if (language.code === needle) return true;
     if (normalise(language.name).includes(needle)) return true;
+    if (displayName && normalise(displayName(language)).includes(needle)) return true;
     return (language.aliases ?? []).some((alias) => normalise(alias).includes(needle));
   });
 }

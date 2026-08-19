@@ -15,6 +15,7 @@ vi.mock("../actions", () => ({
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));
+import { LocaleProvider } from "@/lib/i18n/locale-context";
 import type { WritingEntryView } from "../domain/review-view";
 import { WritingEntryView as ReviewScreen } from "./writing-entry-view";
 
@@ -79,9 +80,21 @@ function view(overrides: Partial<WritingEntryView> = {}): WritingEntryView {
       improvedText: "Yesterday I went to the shop and I bought some bread for breakfast.",
       issues: ISSUES,
       spans: [
-        { span: at("I go"), issueIndex: 0, severity: "error", label: "Grammar, past tense" },
-        { span: at("buyed"), issueIndex: 1, severity: "awkward", label: "Naturalness, phrasing" },
-        { span: at("for my breakfast"), issueIndex: 2, severity: "style", label: "Style, wordiness" },
+        { span: at("I go"), issueIndex: 0, severity: "error", category: "grammar", label: "past tense" },
+        {
+          span: at("buyed"),
+          issueIndex: 1,
+          severity: "awkward",
+          category: "naturalness",
+          label: "phrasing",
+        },
+        {
+          span: at("for my breakfast"),
+          issueIndex: 2,
+          severity: "style",
+          category: "style",
+          label: "wordiness",
+        },
       ],
     },
     ...overrides,
@@ -275,5 +288,68 @@ describe("the rest of the review", () => {
     // The long duplicate list this iteration removed.
     render(<ReviewScreen entry={view()} />);
     expect(screen.queryByText(/things to fix/)).toBeNull();
+  });
+});
+
+describe("the same review, read in Russian", () => {
+  function renderRussian(model = view()) {
+    return render(
+      <LocaleProvider language="ru">
+        <ReviewScreen entry={model} />
+      </LocaleProvider>,
+    );
+  }
+
+  /** The panel names itself in the interface language, so it is found by that. */
+  const russianPanel = () => screen.getByRole("region", { name: "Исправление" });
+
+  it("translates every heading and control the product owns", () => {
+    renderRussian();
+
+    expect(screen.getByText("Разбор")).toBeDefined();
+    expect(screen.getByText("Ваш текст")).toBeDefined();
+    expect(screen.getByText("Как было бы лучше")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Переписать" })).toBeDefined();
+    expect(screen.getByText("Нажмите на подчёркнутую фразу, чтобы увидеть исправление.")).toBeDefined();
+  });
+
+  it("counts the words the way Russian counts them", () => {
+    renderRussian(view({ wordCount: 21 }));
+    expect(screen.getByText("21 слово")).toBeDefined();
+
+    cleanup();
+    renderRussian(view({ wordCount: 14 }));
+    expect(screen.getByText("14 слов")).toBeDefined();
+  });
+
+  it("translates the category and the severity, and leaves the skill label alone", () => {
+    renderRussian();
+    fireEvent.click(highlight("buyed")!);
+
+    // "naturalness" and "awkward" are stored identifiers and unchanged; only
+    // their display text follows the interface. The label is the model's own
+    // canonical English, kept so the future mistake engine sees one skill.
+    expect(within(russianPanel()).getByText("Естественность · phrasing · Неестественно")).toBeDefined();
+  });
+
+  it("leaves the review's own words exactly as they were written", () => {
+    // This entry was reviewed while the learner was reading English. Switching
+    // the interface does not retranslate work already done.
+    renderRussian();
+
+    expect(screen.getByText("Clear, but watch your past tenses.")).toBeDefined();
+    expect(
+      screen.getByText("Yesterday I went to the shop and I bought some bread for breakfast."),
+    ).toBeDefined();
+    expect(renderedText()).toBe(TEXT);
+  });
+
+  it("does not touch the learner's own text either", () => {
+    renderRussian();
+    fireEvent.click(highlight("buyed")!);
+
+    const open = russianPanel();
+    expect(within(open).getByText("buyed")).toBeDefined();
+    expect(within(open).getByText("bought")).toBeDefined();
   });
 });

@@ -6,6 +6,7 @@ import {
   getCurrentUser,
   requireOnboarded,
 } from "@/lib/auth/current-user";
+import type { AppErrorCode } from "@/lib/errors";
 import { isActivityType } from "./domain/activity";
 import { validateManualEntry } from "./domain/manual-entry";
 import {
@@ -21,12 +22,12 @@ import {
  * at the UI, so a failure can be shown calmly next to the control that caused
  * it — and so the interface never claims a timer is running when the insert
  * did not land.
+ *
+ * A result carries a code, never a sentence. The server knows what went wrong;
+ * only the screen knows which language the person reading it asked for.
  */
 
-export type ActionResult = { ok: true } | { ok: false; error: string; field?: string };
-
-const SIGNED_OUT = "Your session has expired. Reopen the app from Telegram.";
-const NOT_SET_UP = "Finish setting up your language before tracking time.";
+export type ActionResult = { ok: true } | { ok: false; code: AppErrorCode; field?: string };
 
 /**
  * Resolves the caller, or throws so the surrounding handler reports a failure.
@@ -46,32 +47,32 @@ class SignedOutError extends Error {}
  */
 async function requireUser() {
   const user = await getCurrentUser();
-  if (!user) throw new SignedOutError(SIGNED_OUT);
+  if (!user) throw new SignedOutError();
   return requireOnboarded(user);
 }
 
 /**
- * TrackerError messages are written for the learner. Anything else is a real
- * fault (database down, bad connection string) and gets a generic message plus
- * a server-side log.
+ * A TrackerError knows which rule was broken and says so in its code. Anything
+ * else is a real fault (database down, bad connection string) and gets the
+ * action's own generic code plus a server-side log.
  */
-function toResult(error: unknown, fallback: string): ActionResult {
+function toResult(error: unknown, fallback: AppErrorCode): ActionResult {
   if (error instanceof SignedOutError) {
-    return { ok: false, error: SIGNED_OUT };
+    return { ok: false, code: "AUTH_EXPIRED" };
   }
   if (error instanceof OnboardingIncompleteError) {
-    return { ok: false, error: NOT_SET_UP };
+    return { ok: false, code: "ONBOARDING_REQUIRED" };
   }
   if (error instanceof TrackerError) {
-    return { ok: false, error: error.message };
+    return { ok: false, code: error.code };
   }
   console.error("[tracker]", error);
-  return { ok: false, error: fallback };
+  return { ok: false, code: fallback };
 }
 
 export async function startSessionAction(activityType: string): Promise<ActionResult> {
   if (!isActivityType(activityType)) {
-    return { ok: false, error: "Choose what you were doing." };
+    return { ok: false, code: "ACTIVITY_REQUIRED" };
   }
 
   try {
@@ -83,7 +84,7 @@ export async function startSessionAction(activityType: string): Promise<ActionRe
       startedAt: new Date(),
     });
   } catch (error) {
-    return toResult(error, "Could not start the session. Try again.");
+    return toResult(error, "SESSION_START_FAILED");
   }
 
   revalidatePath("/");
@@ -95,7 +96,7 @@ export async function stopSessionAction(): Promise<ActionResult> {
     const user = await requireUser();
     await stopSession({ userId: user.id, endedAt: new Date() });
   } catch (error) {
-    return toResult(error, "Could not stop the session. Try again.");
+    return toResult(error, "SESSION_STOP_FAILED");
   }
 
   revalidatePath("/");
@@ -107,7 +108,7 @@ export async function cancelSessionAction(): Promise<ActionResult> {
     const user = await requireUser();
     await cancelSession({ userId: user.id });
   } catch (error) {
-    return toResult(error, "Could not discard the session. Try again.");
+    return toResult(error, "SESSION_DISCARD_FAILED");
   }
 
   revalidatePath("/");
@@ -137,7 +138,7 @@ export async function addManualSessionAction(formData: FormData): Promise<Action
     );
 
     if (!parsed.ok) {
-      return { ok: false, error: parsed.message, field: parsed.field };
+      return { ok: false, code: parsed.code, field: parsed.field };
     }
 
     await createManualSession({
@@ -146,7 +147,7 @@ export async function addManualSessionAction(formData: FormData): Promise<Action
       ...parsed.value,
     });
   } catch (error) {
-    return toResult(error, "Could not save the session. Try again.");
+    return toResult(error, "SESSION_SAVE_FAILED");
   }
 
   revalidatePath("/");

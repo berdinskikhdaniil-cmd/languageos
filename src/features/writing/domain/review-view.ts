@@ -1,6 +1,6 @@
 import type { WritingEntryRow, WritingIssueRow, WritingReviewRow } from "@/db/schema";
 import { selectRenderableSpans, type FragmentSpan } from "./fragments";
-import { CATEGORY_LABELS, isCategory, isSeverity, isUsableReviewContent } from "./review";
+import { isCategory, isSeverity, isUsableReviewContent } from "./review";
 import type { IssueCategory, IssueSeverity } from "./review";
 import type { WritingType } from "./writing-entry";
 
@@ -28,8 +28,13 @@ export type HighlightView = {
   /** Index into `issues`. This is the link between a phrase and its explanation. */
   issueIndex: number;
   severity: IssueSeverity;
-  /** What a screen reader announces in place of the bare phrase. */
-  label: string;
+  /**
+   * What the mark is about, as data rather than as a sentence: the category
+   * identifier and the model's own short skill label. The component turns the
+   * pair into the phrase a screen reader announces, in the reader's language.
+   */
+  category: IssueCategory;
+  label: string | null;
 };
 
 export type ReviewView =
@@ -130,7 +135,8 @@ export function buildEntryView({
       span: { start: issue.startOffset, end: issue.endOffset },
       issueIndex: index,
       severity: issue.severity,
-      label: [CATEGORY_LABELS[issue.category], issue.label].filter(Boolean).join(", "),
+      category: issue.category,
+      label: issue.label,
     });
   });
 

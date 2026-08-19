@@ -2,6 +2,7 @@ import { and, asc, gte, isNull, lt } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { sessions } from "@/db/schema";
+import type { AppErrorCode } from "@/lib/errors";
 import type { ActivityType } from "../domain/activity";
 import { completedDurationSeconds } from "../domain/manual-entry";
 
@@ -10,10 +11,16 @@ import { completedDurationSeconds } from "../domain/manual-entry";
  * database directly; they go through here or through the summary module.
  */
 
-/** Raised when the caller broke a tracker rule, as opposed to the DB failing. */
+/**
+ * Raised when the caller broke a tracker rule, as opposed to the DB failing.
+ *
+ * It carries a code rather than a sentence: the action layer passes the code up
+ * and the screen translates it. `Error` still wants a message, so the code
+ * doubles as one — which is exactly what a server log should show anyway.
+ */
 export class TrackerError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(readonly code: AppErrorCode) {
+    super(code);
     this.name = "TrackerError";
   }
 }
@@ -60,7 +67,7 @@ export async function startSession({
   // Checked here for a clear message, and enforced by a partial unique index in
   // case two requests arrive at once.
   if (await getActiveSession(userId)) {
-    throw new TrackerError("A session is already running. Stop it before starting another.");
+    throw new TrackerError("SESSION_ALREADY_RUNNING");
   }
 
   try {
@@ -72,7 +79,7 @@ export async function startSession({
     return created;
   } catch (error) {
     if (isUniqueViolation(error)) {
-      throw new TrackerError("A session is already running. Stop it before starting another.");
+      throw new TrackerError("SESSION_ALREADY_RUNNING");
     }
     throw error;
   }
@@ -88,7 +95,7 @@ export async function startSession({
 export async function stopSession({ userId, endedAt }: { userId: string; endedAt: Date }) {
   const active = await getActiveSession(userId);
   if (!active) {
-    throw new TrackerError("No session is running.");
+    throw new TrackerError("NO_SESSION_RUNNING");
   }
 
   const [stopped] = await db
@@ -102,7 +109,7 @@ export async function stopSession({ userId, endedAt }: { userId: string; endedAt
     .returning();
 
   if (!stopped) {
-    throw new TrackerError("That session was already stopped.");
+    throw new TrackerError("SESSION_ALREADY_STOPPED");
   }
 
   return stopped;
@@ -112,7 +119,7 @@ export async function stopSession({ userId, endedAt }: { userId: string; endedAt
 export async function cancelSession({ userId }: { userId: string }) {
   const active = await getActiveSession(userId);
   if (!active) {
-    throw new TrackerError("No session is running.");
+    throw new TrackerError("NO_SESSION_RUNNING");
   }
 
   await db.delete(sessions).where(and(eq(sessions.id, active.id), isNull(sessions.endedAt)));

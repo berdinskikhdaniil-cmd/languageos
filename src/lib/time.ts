@@ -1,5 +1,7 @@
 import { TZDate } from "@date-fns/tz";
 import { addDays, differenceInSeconds, startOfDay, startOfWeek } from "date-fns";
+import { DEFAULT_UI_LANGUAGE, intlLocale, type UiLanguage } from "./i18n/locale";
+import { getMessages } from "./i18n/messages";
 
 /**
  * Day and week boundaries, always computed in an explicit IANA timezone.
@@ -7,6 +9,10 @@ import { addDays, differenceInSeconds, startOfDay, startOfWeek } from "date-fns"
  * The server runs in UTC and the learner does not. Every function here takes
  * the zone as an argument, so no feature code ever falls back to the server's
  * idea of "today". Returned values are plain UTC instants, ready for Postgres.
+ *
+ * The two functions that produce words rather than instants take the interface
+ * language as well. A zone and a language are separate questions — somebody in
+ * Amsterdam may read Russian — so neither is ever inferred from the other.
  */
 
 export type Interval = { from: Date; to: Date };
@@ -51,14 +57,23 @@ export function localDayKey(instant: Date, timeZone: string): string {
   return `${zoned.getFullYear()}-${month}-${day}`;
 }
 
-/** Local weekday name, e.g. { short: "Mon", long: "Monday" }. */
+/**
+ * Local weekday name: `{ short: "Mon", long: "Monday" }`, or `{ short: "пн",
+ * long: "понедельник" }`.
+ *
+ * Both come from `Intl`, so the abbreviation is the one the language actually
+ * uses rather than the first three letters of the long form.
+ */
 export function localWeekdayNames(
   instant: Date,
   timeZone: string,
+  language: UiLanguage = DEFAULT_UI_LANGUAGE,
 ): { short: string; long: string } {
+  const locale = intlLocale(language);
+
   return {
-    short: new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone }).format(instant),
-    long: new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone }).format(instant),
+    short: new Intl.DateTimeFormat(locale, { weekday: "short", timeZone }).format(instant),
+    long: new Intl.DateTimeFormat(locale, { weekday: "long", timeZone }).format(instant),
   };
 }
 
@@ -83,21 +98,32 @@ export function localNoonFromDayKey(dayKey: string, timeZone: string): Date | nu
 }
 
 /**
- * A short, human date for a list: "Today", "Yesterday", "17 Aug", "3 Sep 2025".
+ * A short, human date for a list: "Today", "Yesterday", "17 Aug", "3 Sept 2025"
+ * — or "Сегодня", "Вчера", "17 авг.", "3 сент. 2025 г.".
  *
  * Timezone-dependent, so it lives here rather than in lib/format: whether
  * something happened "today" is a question only the learner's own zone can
  * answer, and the server's is not it. The year appears only when it differs
  * from the current one, which keeps the common case short.
+ *
+ * The two relative words come from the dictionary; everything else comes from
+ * `Intl`, including where the day sits relative to the month and whether the
+ * language writes a marker after the year.
  */
-export function localDateLabel(instant: Date, timeZone: string, now: Date): string {
+export function localDateLabel(
+  instant: Date,
+  timeZone: string,
+  now: Date,
+  language: UiLanguage = DEFAULT_UI_LANGUAGE,
+): string {
   const key = localDayKey(instant, timeZone);
   const todayKey = localDayKey(now, timeZone);
+  const { dates } = getMessages(language);
 
-  if (key === todayKey) return "Today";
-  if (key === localDayKey(addLocalDays(now, -1, timeZone), timeZone)) return "Yesterday";
+  if (key === todayKey) return dates.today;
+  if (key === localDayKey(addLocalDays(now, -1, timeZone), timeZone)) return dates.yesterday;
 
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(intlLocale(language), {
     day: "numeric",
     month: "short",
     timeZone,

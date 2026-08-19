@@ -30,6 +30,17 @@ export const activityTypeEnum = pgEnum("activity_type", [
   "other",
 ]);
 
+/**
+ * Which language the interface is drawn in.
+ *
+ * An enum rather than a text column: there are exactly two, and a typo in a
+ * preference should be refused by the database rather than render an English
+ * screen to somebody who asked for Russian. The values mirror
+ * `UI_LANGUAGES` in lib/i18n/locale.ts, and a test holds the two together —
+ * they are not imported here because drizzle-kit loads this file on its own.
+ */
+export const uiLanguageEnum = pgEnum("ui_language", ["en", "ru"]);
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   /**
@@ -56,6 +67,20 @@ export const users = pgTable("users", {
    * then, because an un-onboarded user never reaches a screen that counts days.
    */
   timezone: text("timezone").notNull().default("UTC"),
+  /**
+   * The learner's own choice of interface language, and the only source of
+   * truth for it.
+   *
+   * `telegram_language_code` above is a mirror of what Telegram reports and is
+   * refreshed on every sign-in; this column is not. Telegram's tag seeds it once,
+   * when the row is created, and after that only Settings writes here — a
+   * Telegram client set to another language must never overrule somebody who
+   * chose.
+   *
+   * Defaulted rather than nullable: every screen needs a language, and "not
+   * chosen yet" is not a state any of them could render.
+   */
+  uiLanguage: uiLanguageEnum("ui_language").notNull().default("en"),
   /**
    * When first-run onboarding finished. NULL means the account is
    * authenticated but not set up: no language, no timezone, no goal.

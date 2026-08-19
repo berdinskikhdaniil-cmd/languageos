@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { SUGGESTED_DAILY_GOAL_MINUTES } from "@/features/tracker/domain/goals";
+import type { AppErrorCode } from "@/lib/errors";
 import { completeOnboardingAction } from "../actions";
 import { detectTimeZone } from "../domain/timezone";
 import { GoalStep } from "./goal-step";
@@ -18,6 +19,11 @@ import { TimezoneStep } from "./timezone-step";
  * The step lives in component state rather than the URL — Telegram's back
  * gesture closes the Mini App, so a history stack here would only surprise
  * people.
+ *
+ * Every word on these three screens is already in the account's own language.
+ * `users.ui_language` is set when the row is created, from Telegram's tag, so
+ * somebody whose Telegram is Russian reads the very first question in Russian —
+ * there is nothing to wait for onboarding to finish before localising.
  */
 
 const TOTAL_STEPS = 3;
@@ -36,11 +42,11 @@ export function OnboardingFlow() {
   const [detected] = useState<string | null>(detectTimeZone);
   const [timeZone, setTimeZone] = useState<string | null>(detected);
   const [dailyGoalMinutes, setDailyGoalMinutes] = useState<number>(SUGGESTED_DAILY_GOAL_MINUTES);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<AppErrorCode | null>(null);
   const [pending, startTransition] = useTransition();
 
   const submit = () => {
-    setError(null);
+    setFailure(null);
 
     startTransition(async () => {
       const result = await completeOnboardingAction({
@@ -50,7 +56,7 @@ export function OnboardingFlow() {
       });
 
       // A successful action redirects, so anything returned here is a failure.
-      setError(result.error);
+      setFailure(result.code);
       if (result.field === "language") setStep(1);
       if (result.field === "timezone") setStep(2);
     });
@@ -91,7 +97,7 @@ export function OnboardingFlow() {
       onSubmit={submit}
       onBack={() => setStep(2)}
       pending={pending}
-      error={error}
+      failure={failure}
     />
   );
 }

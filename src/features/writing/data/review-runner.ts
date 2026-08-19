@@ -74,11 +74,19 @@ export async function runReview({
 
   const reviewId = claim.review.id;
 
+  /**
+   * Three languages, resolved here and nowhere else: the one being learned, the
+   * one the learner reads, and the canonical English of the skill labels. The
+   * interface language is read at the moment of the review, so a review created
+   * after switching to Russian comes back in Russian — and one created before it
+   * stays exactly as it was written. Nothing regenerates an existing review.
+   */
   const prompt = buildReviewPrompt({
     languageName: user.primaryLanguage.name,
     languageCode: user.primaryLanguage.code,
     type: entry.type,
     text: entry.originalText,
+    feedbackLanguage: user.uiLanguage,
   });
 
   const completion = await requestStructuredCompletion({

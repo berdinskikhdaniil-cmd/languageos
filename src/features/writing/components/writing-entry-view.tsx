@@ -4,9 +4,10 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FieldError } from "@/components/ui/field-error";
+import { useMessages } from "@/lib/i18n/locale-context";
 import { retryReviewAction, saveRewriteAction } from "../actions";
-import { reviewFailureMessage } from "../domain/failures";
-import { WRITING_TYPE_LABELS, MAX_WRITING_CHARS, MIN_WRITING_CHARS } from "../domain/writing-entry";
+import { reviewFailureKey } from "../domain/failures";
+import { MAX_WRITING_CHARS, MIN_WRITING_CHARS } from "../domain/writing-entry";
 import type { WritingEntryView as WritingEntryViewModel } from "../domain/review-view";
 import { HighlightedText } from "./highlighted-text";
 import { IssueDetail } from "./issue-detail";
@@ -19,9 +20,16 @@ import { IssueDetailPanel } from "./issue-detail-panel";
  * reviewed, being rewritten, and rewritten. Each is reached by a single tap and
  * none of them navigates away, so the review the learner is correcting from
  * stays a scroll away rather than a back button away.
+ *
+ * Every heading and control here follows the interface language. The review's
+ * own words do not: a summary and its explanations were written in whatever
+ * language the learner read at the time, and they stay as they were. Switching
+ * to Russian does not retranslate work already done — it changes the next
+ * review, not the last one.
  */
 
 export function WritingEntryView({ entry }: { entry: WritingEntryViewModel }) {
+  const messages = useMessages();
   const [rewriting, setRewriting] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
@@ -42,9 +50,11 @@ export function WritingEntryView({ entry }: { entry: WritingEntryViewModel }) {
     <div className="flex flex-col gap-8 pt-3">
       <header>
         <h1 className="text-[1.75rem] font-bold leading-tight tracking-[-0.03em]">
-          {WRITING_TYPE_LABELS[entry.type]}
+          {messages.writing.types[entry.type]}
         </h1>
-        <p className="mt-2 text-[0.8125rem] text-faint">{entry.wordCount} words</p>
+        <p className="mt-2 text-[0.8125rem] text-faint">
+          {messages.writing.wordCount(entry.wordCount)}
+        </p>
       </header>
 
       {entry.review?.status === "completed" ? (
@@ -75,6 +85,7 @@ function CompletedReview({
   justSaved: boolean;
   onRewrite: () => void;
 }) {
+  const messages = useMessages();
   const [selected, setSelected] = useState<number | null>(null);
 
   const highlighted = new Set(review.spans.map((span) => span.issueIndex));
@@ -90,12 +101,12 @@ function CompletedReview({
   return (
     <>
       <section>
-        <h2 className="text-[0.8125rem] font-medium text-muted">Feedback</h2>
+        <h2 className="text-[0.8125rem] font-medium text-muted">{messages.writing.feedback}</h2>
         <p className="mt-2.5 text-[1.0625rem] leading-[1.55]">{review.summary}</p>
       </section>
 
       <section>
-        <h2 className="text-[0.8125rem] font-medium text-muted">Your writing</h2>
+        <h2 className="text-[0.8125rem] font-medium text-muted">{messages.writing.yourWriting}</h2>
         <div className="mt-2.5">
           <HighlightedText
             text={entry.originalText}
@@ -107,16 +118,18 @@ function CompletedReview({
 
         {review.spans.length > 0 ? (
           <p className="mt-3.5 text-[0.8125rem] leading-snug text-faint">
-            Tap a highlighted phrase to see the correction.
+            {messages.writing.tapHighlight}
           </p>
         ) : null}
       </section>
 
       {unplaced.length > 0 ? (
         <section>
-          <h2 className="text-[0.8125rem] font-medium text-muted">Other feedback</h2>
+          <h2 className="text-[0.8125rem] font-medium text-muted">
+            {messages.writing.otherFeedback}
+          </h2>
           <p className="mt-1.5 text-[0.8125rem] leading-snug text-faint">
-            {unplaced.length === 1 ? "This one" : "These"} could not be pinned to an exact phrase.
+            {messages.writing.unplacedNote(unplaced.length)}
           </p>
           <ul className="mt-4 flex flex-col gap-5">
             {unplaced.map((issue) => (
@@ -130,15 +143,19 @@ function CompletedReview({
 
       {review.issues.length === 0 ? (
         <section>
-          <h2 className="text-[0.8125rem] font-medium text-muted">Nothing to fix</h2>
+          <h2 className="text-[0.8125rem] font-medium text-muted">
+            {messages.writing.nothingToFix}
+          </h2>
           <p className="mt-2.5 text-[0.9375rem] leading-[1.5] text-muted">
-            No concrete mistakes were found in this one.
+            {messages.writing.nothingToFixBody}
           </p>
         </section>
       ) : null}
 
       <section>
-        <h2 className="text-[0.8125rem] font-medium text-muted">Better version</h2>
+        <h2 className="text-[0.8125rem] font-medium text-muted">
+          {messages.writing.betterVersion}
+        </h2>
         <p className="mt-2.5 whitespace-pre-wrap break-words text-[1rem] leading-[1.7] text-muted">
           {review.improvedText}
         </p>
@@ -151,13 +168,12 @@ function CompletedReview({
           <button
             type="button"
             onClick={onRewrite}
-            className="h-14 w-full rounded-[var(--radius-control)] bg-accent text-[0.9375rem] font-bold text-accent-ink transition-colors active:bg-accent-pressed"
+            className="h-14 w-full rounded-[var(--radius-control)] bg-accent px-4 text-[0.9375rem] font-bold leading-tight text-accent-ink transition-colors active:bg-accent-pressed"
           >
-            Rewrite it
+            {messages.writing.rewriteIt}
           </button>
           <p className="mt-3 text-[0.8125rem] leading-snug text-faint">
-            You get your own text back, not the corrected one. Fixing it yourself is the part
-            that sticks.
+            {messages.writing.rewriteInvitation}
           </p>
         </section>
       )}
@@ -182,10 +198,12 @@ function Rewritten({
   justSaved: boolean;
   onRewrite: () => void;
 }) {
+  const messages = useMessages();
+
   return (
     <section>
       <h2 className="text-[0.8125rem] font-medium text-muted">
-        {justSaved ? "Saved · your rewrite" : "Your rewrite"}
+        {justSaved ? messages.writing.savedYourRewrite : messages.writing.yourRewrite}
       </h2>
       <p className="mt-2.5 whitespace-pre-wrap break-words text-[1rem] leading-[1.7]">
         {entry.revisedText}
@@ -195,7 +213,7 @@ function Rewritten({
         onClick={onRewrite}
         className="mt-4 h-12 rounded-[var(--radius-control)] bg-surface px-5 text-[0.9375rem] font-semibold transition-colors active:bg-surface-raised"
       >
-        Edit the rewrite
+        {messages.writing.editRewrite}
       </button>
     </section>
   );
@@ -209,15 +227,25 @@ function Rewritten({
  */
 function UnreviewedEntry({ entry }: { entry: WritingEntryViewModel }) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const messages = useMessages();
+  const [attempt, setAttempt] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const retry = () => {
-    setError(null);
+    setAttempt(null);
     startTransition(async () => {
       const result = await retryReviewAction(entry.id);
-      if (result.ok) router.refresh();
-      else setError(result.error);
+      if (result.ok) {
+        router.refresh();
+        return;
+      }
+      // A retry fails either because the review did not happen — its own set of
+      // reasons — or because the request itself was refused.
+      setAttempt(
+        "failure" in result
+          ? messages.writing.failures[result.failure]
+          : messages.errors[result.code],
+      );
     });
   };
 
@@ -231,7 +259,7 @@ function UnreviewedEntry({ entry }: { entry: WritingEntryViewModel }) {
   return (
     <>
       <section>
-        <h2 className="text-[0.8125rem] font-medium text-muted">Your writing</h2>
+        <h2 className="text-[0.8125rem] font-medium text-muted">{messages.writing.yourWriting}</h2>
         <p className="mt-2.5 whitespace-pre-wrap break-words text-[1rem] leading-[1.7]">
           {entry.originalText}
         </p>
@@ -239,21 +267,21 @@ function UnreviewedEntry({ entry }: { entry: WritingEntryViewModel }) {
 
       <section>
         <p className="text-[0.9375rem] leading-[1.5] text-muted">
-          {error ?? reviewFailureMessage(stored)}
+          {attempt ?? messages.writing.failures[reviewFailureKey(stored)]}
         </p>
         <button
           type="button"
           onClick={retry}
           disabled={pending}
-          className="mt-4 h-14 w-full rounded-[var(--radius-control)] bg-accent text-[0.9375rem] font-bold text-accent-ink transition-colors active:bg-accent-pressed disabled:opacity-50"
+          className="mt-4 h-14 w-full rounded-[var(--radius-control)] bg-accent px-4 text-[0.9375rem] font-bold leading-tight text-accent-ink transition-colors active:bg-accent-pressed disabled:opacity-50"
         >
-          {pending ? "Reviewing…" : "Try review again"}
+          {pending ? messages.writing.reviewing : messages.writing.tryReviewAgain}
         </button>
         <Link
           href="/practice/writing"
-          className="mt-3 flex h-10 items-center justify-center text-[0.875rem] font-medium text-muted transition-colors active:text-fg"
+          className="mt-3 flex h-10 items-center justify-center text-center text-[0.875rem] font-medium leading-tight text-muted transition-colors active:text-fg"
         >
-          Write something else
+          {messages.writing.writeSomethingElse}
         </Link>
       </section>
     </>
@@ -276,16 +304,17 @@ function RewriteEditor({
   onSaved: () => void;
 }) {
   const router = useRouter();
+  const messages = useMessages();
   const [text, setText] = useState(entry.revisedText ?? entry.originalText);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const save = () => {
-    setError(null);
+    setFailure(null);
     startTransition(async () => {
       const result = await saveRewriteAction({ entryId: entry.id, text });
       if (!result.ok) {
-        setError(result.error);
+        setFailure("code" in result ? messages.errors[result.code] : null);
         return;
       }
       onSaved();
@@ -298,9 +327,11 @@ function RewriteEditor({
   return (
     <div className="flex flex-col pt-3">
       <header>
-        <h1 className="text-[1.75rem] font-bold leading-tight tracking-[-0.03em]">Rewrite it</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight tracking-[-0.03em]">
+          {messages.writing.rewriteTitle}
+        </h1>
         <p className="mt-2 max-w-[24rem] text-[0.9375rem] leading-[1.5] text-muted">
-          Your own text, as you wrote it. Fix what the review pointed at.
+          {messages.writing.rewriteIntro}
         </p>
       </header>
 
@@ -309,7 +340,7 @@ function RewriteEditor({
         onChange={(event) => setText(event.target.value.slice(0, MAX_WRITING_CHARS))}
         autoFocus
         rows={12}
-        aria-label="Your rewrite"
+        aria-label={messages.writing.rewriteField}
         className="mt-6 min-h-[14rem] w-full resize-y rounded-[var(--radius-card)] bg-surface p-4 text-[1rem] leading-[1.6] text-fg"
       />
 
@@ -317,20 +348,20 @@ function RewriteEditor({
         type="button"
         onClick={save}
         disabled={pending || tooShort}
-        className="mt-6 h-14 w-full rounded-[var(--radius-control)] bg-accent text-[0.9375rem] font-bold text-accent-ink transition-colors active:bg-accent-pressed disabled:opacity-50"
+        className="mt-6 h-14 w-full rounded-[var(--radius-control)] bg-accent px-4 text-[0.9375rem] font-bold leading-tight text-accent-ink transition-colors active:bg-accent-pressed disabled:opacity-50"
       >
-        {pending ? "Saving…" : "Save rewrite"}
+        {pending ? messages.common.saving : messages.writing.saveRewrite}
       </button>
 
       <button
         type="button"
         onClick={onCancel}
-        className="mt-3 h-10 text-[0.875rem] font-medium text-muted transition-colors active:text-fg"
+        className="mt-3 h-10 text-[0.875rem] font-medium leading-tight text-muted transition-colors active:text-fg"
       >
-        Back to the review
+        {messages.writing.backToReview}
       </button>
 
-      <FieldError message={error} />
+      <FieldError message={failure} />
     </div>
   );
 }

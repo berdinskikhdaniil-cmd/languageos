@@ -36,28 +36,18 @@ export const ISSUE_CATEGORIES = [
 
 export type IssueCategory = (typeof ISSUE_CATEGORIES)[number];
 
-export const CATEGORY_LABELS: Record<IssueCategory, string> = {
-  grammar: "Grammar",
-  agreement: "Agreement",
-  word_order: "Word order",
-  word_choice: "Word choice",
-  spelling: "Spelling",
-  punctuation: "Punctuation",
-  naturalness: "Naturalness",
-  style: "Style",
-  other: "Other",
-};
+/**
+ * The names above are identifiers and stay identifiers, whatever the interface
+ * is set to. What a reader sees comes from `writing.categories` and
+ * `writing.severities` in lib/i18n/messages — a Russian screen says
+ * "Грамматика" over a row whose column still holds `grammar`, which is the only
+ * way the future mistake engine can count one skill rather than two.
+ */
 
 /** Three levels. Enough to sort by, few enough that the model uses them consistently. */
 export const ISSUE_SEVERITIES = ["error", "awkward", "style"] as const;
 
 export type IssueSeverity = (typeof ISSUE_SEVERITIES)[number];
-
-export const SEVERITY_LABELS: Record<IssueSeverity, string> = {
-  error: "Mistake",
-  awkward: "Awkward",
-  style: "Style",
-};
 
 export type ReviewIssue = {
   category: IssueCategory;
@@ -145,7 +135,7 @@ export const REVIEW_JSON_SCHEMA: Record<string, unknown> = {
     summary: {
       type: "string",
       description:
-        "Two or three sentences addressed to the learner: what worked, and the one thing most worth fixing. No score, no level, no numbers out of ten.",
+        "Two or three sentences addressed to the learner, in the feedback language named in the instructions: what worked, and the one thing most worth fixing. No score, no level, no numbers out of ten.",
     },
     improvedText: {
       type: "string",
@@ -164,7 +154,7 @@ export const REVIEW_JSON_SCHEMA: Record<string, unknown> = {
           label: {
             type: ["string", "null"],
             description:
-              "The specific skill, in two or three words: \"articles\", \"past tense\", \"noun case\", \"collocation\". Null if nothing more specific applies.",
+              "The specific skill, in two or three words and always in English whatever language the feedback is written in: \"articles\", \"past tense\", \"noun case\", \"collocation\". Null if nothing more specific applies.",
           },
           severity: { type: "string", enum: [...ISSUE_SEVERITIES] },
           originalFragment: {
@@ -172,10 +162,15 @@ export const REVIEW_JSON_SCHEMA: Record<string, unknown> = {
             description:
               "The exact substring from the learner's text, copied character for character. Never paraphrased, never re-spaced, and short enough to point at one problem.",
           },
-          suggestion: { type: "string", description: "What that fragment should be instead." },
+          suggestion: {
+            type: "string",
+            description:
+              "What that fragment should be instead, written in the language being learned — the corrected text itself, not a description of the correction.",
+          },
           explanation: {
             type: "string",
-            description: "One or two sentences in English explaining why, in plain words.",
+            description:
+              "One or two sentences explaining why, in plain words, in the feedback language named in the instructions.",
           },
         },
       },

@@ -2,10 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  DEFAULT_UI_LANGUAGE,
+  uiLanguageFromBrowser,
+  type UiLanguage,
+} from "@/lib/i18n/locale";
+import { getMessages } from "@/lib/i18n/messages";
 import { getRawInitData } from "@/lib/telegram/web-app";
 import { AuthScreen } from "./auth-screen";
 
 type Phase = "checking" | "signing-in" | "outside-telegram" | "failed";
+type Failure = "couldNotSignIn" | "noConnection" | "server";
 
 /**
  * Trades the Telegram launch payload for one of our sessions, once, at startup.
@@ -16,11 +23,20 @@ type Phase = "checking" | "signing-in" | "outside-telegram" | "failed";
  *
  * Opened in a plain browser with no development bypass, it says so instead of
  * showing somebody else's data.
+ *
+ * This is the one screen with no account behind it, so it is the one screen that
+ * has to guess a language. It reads the browser's own, in an effect rather than
+ * during render — the server has already sent English HTML and disagreeing with
+ * it mid-hydration would be a mismatch, not a translation. The guess costs
+ * nothing and is discarded the moment sign-in succeeds: from then on the answer
+ * comes from `users.ui_language`.
  */
 export function AuthBootstrap() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("checking");
-  const [error, setError] = useState<string | null>(null);
+  const [language, setLanguage] = useState<UiLanguage>(DEFAULT_UI_LANGUAGE);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [serverMessage, setServerMessage] = useState<string | null>(null);
   const started = useRef(false);
 
   const signIn = useCallback(async () => {
@@ -32,7 +48,8 @@ export function AuthBootstrap() {
     }
 
     setPhase("signing-in");
-    setError(null);
+    setFailure(null);
+    setServerMessage(null);
 
     try {
       const response = await fetch("/api/auth/telegram", {
@@ -46,7 +63,14 @@ export function AuthBootstrap() {
         | null;
 
       if (!response.ok || !payload?.ok) {
-        setError(payload?.error ?? "Could not sign you in right now.");
+        /**
+         * The endpoint's own wording, when it has any. It is English — those
+         * messages predate this setting and there is no account to localise
+         * them against yet — so it is used only where it says something the
+         * generic line does not.
+         */
+        setServerMessage(payload?.error ?? null);
+        setFailure(payload?.error ? "server" : "couldNotSignIn");
         setPhase("failed");
         return;
       }
@@ -54,7 +78,7 @@ export function AuthBootstrap() {
       // The cookie is set. Re-render the tree so the server picks it up.
       router.refresh();
     } catch {
-      setError("No connection to the server.");
+      setFailure("noConnection");
       setPhase("failed");
     }
   }, [router]);
@@ -62,26 +86,37 @@ export function AuthBootstrap() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+
+    setLanguage(uiLanguageFromBrowser(navigator.languages ?? [navigator.language]));
     void signIn();
   }, [signIn]);
 
+  const messages = getMessages(language);
+
   if (phase === "outside-telegram") {
-    return <AuthScreen message="Open Language OS from Telegram to continue." />;
+    return <AuthScreen message={messages.auth.outsideTelegram} />;
   }
 
   if (phase === "failed") {
+    const message =
+      failure === "server" && serverMessage
+        ? serverMessage
+        : failure === "noConnection"
+          ? messages.auth.noConnection
+          : messages.auth.couldNotSignIn;
+
     return (
-      <AuthScreen message={error ?? "Could not sign you in right now."}>
+      <AuthScreen message={message}>
         <button
           type="button"
           onClick={() => void signIn()}
           className="mt-6 h-12 rounded-[var(--radius-control)] bg-accent px-6 text-[0.9375rem] font-bold text-accent-ink transition-colors active:bg-accent-pressed"
         >
-          Try again
+          {messages.auth.tryAgain}
         </button>
       </AuthScreen>
     );
   }
 
-  return <AuthScreen message="Signing you in…" />;
+  return <AuthScreen message={messages.auth.signingIn} />;
 }

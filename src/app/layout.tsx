@@ -7,6 +7,8 @@ import { AppShell } from "@/components/layout/app-shell";
 import { SetupShell } from "@/components/layout/setup-shell";
 import { TelegramViewport } from "@/components/layout/telegram-viewport";
 import { getCurrentUser, isOnboarded, type CurrentUser } from "@/lib/auth/current-user";
+import { DEFAULT_UI_LANGUAGE } from "@/lib/i18n/locale";
+import { LocaleProvider } from "@/lib/i18n/locale-context";
 import "./globals.css";
 
 /** The only typeface in the product. See docs/design-system.md. */
@@ -70,8 +72,21 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const needsSetup = user !== null && !isOnboarded(user);
   const showApp = user !== null || identityUnavailable;
 
+  /**
+   * Which language the whole tree speaks, decided on the server from the user's
+   * own row. Deciding it here is what stops the app rendering in English and
+   * then flipping to Russian a moment after hydration: the first HTML the
+   * Telegram webview paints is already right.
+   *
+   * With no user there is nothing to read it from — a signed-out visitor has no
+   * row — so the shell falls back to English and the sign-in screen takes over,
+   * reading the device's own hint for itself. That is the only place in the
+   * product where the language is guessed rather than known.
+   */
+  const uiLanguage = user?.uiLanguage ?? DEFAULT_UI_LANGUAGE;
+
   return (
-    <html lang="en" className={manrope.variable}>
+    <html lang={uiLanguage} className={manrope.variable}>
       <head>
         {/*
           Telegram's own bridge, which is what defines `window.Telegram.WebApp`.
@@ -86,13 +101,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body>
         <TelegramViewport />
-        {needsSetup ? (
-          <SetupShell>{children}</SetupShell>
-        ) : showApp ? (
-          <AppShell user={user}>{children}</AppShell>
-        ) : (
-          <AuthBootstrap />
-        )}
+        <LocaleProvider language={uiLanguage}>
+          {needsSetup ? (
+            <SetupShell>{children}</SetupShell>
+          ) : showApp ? (
+            <AppShell user={user}>{children}</AppShell>
+          ) : (
+            <AuthBootstrap />
+          )}
+        </LocaleProvider>
       </body>
     </html>
   );

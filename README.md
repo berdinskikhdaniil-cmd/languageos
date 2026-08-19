@@ -20,6 +20,9 @@ infrastructure. It runs the same code as this repository.
 ## Available now
 
 - **Telegram Mini App** — a mobile-first interface, designed for the Telegram viewport.
+- **Russian and English interface** — the whole app in either, chosen in Settings and
+  remembered between launches. A new account opens in the language its Telegram client
+  reports, and that guess never overrules a choice made afterwards.
 - **Telegram authentication** — the signed `initData` from a launch is verified on the
   server, which then issues its own session in an HttpOnly cookie.
 - **First-run onboarding** — a new account chooses the language it is learning,
@@ -34,12 +37,16 @@ infrastructure. It runs the same code as this repository.
 - **Writing with AI feedback** — write freely or retell something you watched or
   read, and get back a short summary, the mistakes marked in your own text with an
   explanation and a correction for each, and a better version of the whole thing.
-  Then rewrite it yourself: you get your own draft back, not the corrected one.
+  Then rewrite it yourself: you get your own draft back, not the corrected one. The
+  summary and the explanations arrive in your interface language; the corrections are
+  in the language you are learning. Practice lists the last three pieces you wrote —
+  there is no full writing history yet.
 - **Activity breakdown** — video, podcast, reading, conversation, writing, speaking and
   other, grouped into Input, Speaking and Writing.
 - **Daily and weekly totals** — today and this week, with a real previous-week
   comparison, drawn against the daily goal that was chosen during setup. Day and week
   boundaries are computed in the user's own timezone, not the server's.
+- **Settings** — one setting so far: the language the interface is drawn in.
 - **Telegram bot** — `/start` and `/help`, a button that opens the Mini App, and a
   webhook that verifies Telegram's secret header.
 

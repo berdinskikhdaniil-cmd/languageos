@@ -1,5 +1,6 @@
 import { cn } from "@/lib/cn";
 import { formatPercentSigned, formatPercentWorded } from "@/lib/format";
+import { DEFAULT_UI_LANGUAGE, type UiLanguage } from "@/lib/i18n/locale";
 
 type MetricChangeProps = {
   /** Signed percentage change. */
@@ -9,10 +10,12 @@ type MetricChangeProps = {
    * separate: fewer errors is a fall and still good news.
    */
   improved: boolean;
-  /** Trailing context that completes the sentence, e.g. "from last week". */
+  /** Trailing context that completes the sentence, already in the reader's language. */
   context?: string;
   /** "signed" → "+18%". "worded" → "Down 22%", for opening a sentence. */
   phrasing?: "signed" | "worded";
+  /** Only the worded phrasing has words in it; the signed one is punctuation. */
+  language?: UiLanguage;
   className?: string;
 };
 
@@ -27,9 +30,13 @@ export function MetricChange({
   improved,
   context,
   phrasing = "signed",
+  language = DEFAULT_UI_LANGUAGE,
   className,
 }: MetricChangeProps) {
-  const value = phrasing === "worded" ? formatPercentWorded(percent) : formatPercentSigned(percent);
+  const value =
+    phrasing === "worded"
+      ? formatPercentWorded(percent, language)
+      : formatPercentSigned(percent);
 
   return (
     <p className={cn("text-[0.875rem] leading-snug", className)}>

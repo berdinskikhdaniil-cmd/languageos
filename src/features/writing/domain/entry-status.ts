@@ -16,12 +16,6 @@ export const WRITING_ENTRY_STATUSES = ["needs_review", "reviewed", "rewritten"] 
 
 export type WritingEntryStatus = (typeof WRITING_ENTRY_STATUSES)[number];
 
-export const WRITING_ENTRY_STATUS_LABELS: Record<WritingEntryStatus, string> = {
-  needs_review: "Needs review",
-  reviewed: "Reviewed",
-  rewritten: "Rewritten",
-};
-
 export function writingEntryStatus({
   revisedText,
   review,

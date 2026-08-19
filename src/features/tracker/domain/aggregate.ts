@@ -1,3 +1,4 @@
+import { DEFAULT_UI_LANGUAGE, type UiLanguage } from "@/lib/i18n/locale";
 import { addLocalDays, elapsedSeconds, localDayKey, localWeekdayNames } from "@/lib/time";
 import { type ActivityGroup, type ActivityType, activityGroup } from "./activity";
 
@@ -18,6 +19,7 @@ export type GroupTotals = Record<ActivityGroup, number> & { total: number };
 export type DayTotal = {
   /** Local "YYYY-MM-DD". */
   dayKey: string;
+  /** Already in the reader's language — "Mon" / "пн". */
   shortName: string;
   name: string;
   seconds: number;
@@ -84,12 +86,15 @@ export function buildWeekDays({
   weekStart,
   timeZone,
   now,
+  language = DEFAULT_UI_LANGUAGE,
 }: {
   sessions: readonly TrackedSession[];
   previousWeekSessions: readonly TrackedSession[];
   weekStart: Date;
   timeZone: string;
   now: Date;
+  /** Only the weekday names depend on it; every number is language-free. */
+  language?: UiLanguage;
 }): DayTotal[] {
   const byDay = sumByLocalDay(sessions, timeZone, now);
   const previousByDay = sumByLocalDay(previousWeekSessions, timeZone, now);
@@ -103,7 +108,7 @@ export function buildWeekDays({
       addLocalDays(previousWeekStart, index, timeZone),
       timeZone,
     );
-    const { short, long } = localWeekdayNames(dayStart, timeZone);
+    const { short, long } = localWeekdayNames(dayStart, timeZone, language);
 
     return {
       dayKey,

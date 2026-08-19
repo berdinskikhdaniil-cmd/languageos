@@ -3,6 +3,8 @@
 import { cn } from "@/lib/cn";
 import { DAILY_GOAL_OPTIONS } from "@/features/tracker/domain/goals";
 import { FieldError } from "@/components/ui/field-error";
+import type { AppErrorCode } from "@/lib/errors";
+import { useMessages } from "@/lib/i18n/locale-context";
 import { OnboardingStep, PrimaryAction } from "./onboarding-step";
 
 /**
@@ -20,7 +22,7 @@ export function GoalStep({
   onSubmit,
   onBack,
   pending,
-  error,
+  failure,
 }: {
   step: number;
   totalSteps: number;
@@ -29,21 +31,23 @@ export function GoalStep({
   onSubmit: () => void;
   onBack: () => void;
   pending: boolean;
-  error: string | null;
+  failure: AppErrorCode | null;
 }) {
+  const messages = useMessages();
+
   return (
     <OnboardingStep
       step={step}
       totalSteps={totalSteps}
-      title="How much language time do you want each day?"
-      description="The weekly chart is drawn against it. Missing a day is fine — the line is there to aim at."
+      title={messages.onboarding.goalTitle}
+      description={messages.onboarding.goalDescription}
       onBack={onBack}
       footer={
         <div>
           <PrimaryAction onClick={onSubmit} disabled={pending}>
-            {pending ? "Setting up…" : "Start learning"}
+            {pending ? messages.onboarding.settingUp : messages.onboarding.startLearning}
           </PrimaryAction>
-          <FieldError message={error} />
+          <FieldError message={failure ? messages.errors[failure] : null} />
         </div>
       }
     >
@@ -70,7 +74,7 @@ export function GoalStep({
                   selected ? "text-accent-ink/70" : "text-muted",
                 )}
               >
-                min
+                {messages.units.minutesShort}
               </span>
             </button>
           );

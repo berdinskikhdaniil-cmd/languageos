@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { WritingComposer } from "@/features/writing/components/writing-composer";
 import { resolvePageAccess } from "@/lib/auth/page-access";
+import { displayLanguageName } from "@/lib/i18n/language-names";
+import { getMessages } from "@/lib/i18n/messages";
 
 export const metadata: Metadata = { title: "Writing" };
 
@@ -19,19 +21,31 @@ export default async function WritingPage() {
   if (access.status === "onboarding-required") redirect("/onboarding");
   if (access.status === "signed-out") return null;
   if (access.status === "unavailable") {
+    const messages = getMessages();
     return (
       <section className="rounded-[var(--radius-card)] bg-surface p-5">
-        <p className="text-[1.0625rem] font-semibold leading-snug">Writing is not reachable.</p>
+        <p className="text-[1.0625rem] font-semibold leading-snug">
+          {messages.writing.composerUnavailableTitle}
+        </p>
         <p className="mt-2 text-[0.9375rem] leading-[1.5] text-muted">
-          The database is not responding. Reload in a moment.
+          {messages.writing.composerUnavailableBody}
         </p>
       </section>
     );
   }
 
+  /**
+   * The learning language is named for the reader, not for the database: the
+   * screen says "Немецкий" while the row still says `de` and "German". The code
+   * goes through untouched, because it is what segments the word count.
+   */
   return (
     <WritingComposer
-      languageName={access.user.primaryLanguage.name}
+      languageName={displayLanguageName(
+        access.user.primaryLanguage.code,
+        access.user.primaryLanguage.name,
+        access.user.uiLanguage,
+      )}
       languageCode={access.user.primaryLanguage.code}
     />
   );

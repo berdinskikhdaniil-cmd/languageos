@@ -1,4 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { useMessages } from "@/lib/i18n/locale-context";
 
 /**
  * The frame all three steps share: the same heading position, the same footer,
@@ -30,6 +33,8 @@ export function OnboardingStep({
   footer?: ReactNode;
   children: ReactNode;
 }) {
+  const messages = useMessages();
+
   return (
     <div className="flex min-h-[var(--app-height,100dvh)] flex-col pt-[var(--safe-top)]">
       <div className="flex items-center gap-4 px-5 pb-1 pt-4">
@@ -43,7 +48,7 @@ export function OnboardingStep({
           />
         </div>
         <p className="shrink-0 text-[0.75rem] leading-none text-faint">
-          {step} of {totalSteps}
+          {messages.onboarding.stepOf(step, totalSteps)}
         </p>
       </div>
 
@@ -67,7 +72,7 @@ export function OnboardingStep({
               onClick={onBack}
               className="mt-3 h-10 w-full text-[0.875rem] font-medium text-muted transition-colors active:text-fg"
             >
-              Back
+              {messages.common.back}
             </button>
           ) : null}
         </div>

@@ -8,9 +8,11 @@ import {
   requireOnboarded,
   type OnboardedUser,
 } from "@/lib/auth/current-user";
+import type { AppErrorCode } from "@/lib/errors";
+import type { ReviewFailureKey } from "@/lib/i18n/messages";
 import { createWritingEntry, getWritingEntry, saveRewrite } from "./data/entries";
 import { runReview } from "./data/review-runner";
-import { reviewFailureMessage } from "./domain/failures";
+import { reviewFailureKey } from "./domain/failures";
 import { isWritingType, validateWritingText } from "./domain/writing-entry";
 
 /**
@@ -21,29 +23,32 @@ import { isWritingType, validateWritingText } from "./domain/writing-entry";
  * action accepts a user id, a language id or an unvalidated text — an entry id
  * is the only thing a client sends, and it is always looked up together with
  * its owner.
+ *
+ * Failures come back as codes. A review that did not happen has its own set of
+ * reasons, so it reports a `failure` key instead — the two are different kinds
+ * of thing and the screen words them differently.
  */
 
 export type WritingActionResult =
   | { ok: true }
-  | { ok: false; error: string; field?: string };
-
-const SIGNED_OUT = "Your session has expired. Reopen the app from Telegram.";
-const NOT_SET_UP = "Finish setting up your language before writing.";
-const NOT_FOUND = "That writing could not be found.";
+  | { ok: false; code: AppErrorCode; field?: string }
+  | { ok: false; failure: ReviewFailureKey };
 
 class SignedOutError extends Error {}
 
 async function requireUser(): Promise<OnboardedUser> {
   const user = await getCurrentUser();
-  if (!user) throw new SignedOutError(SIGNED_OUT);
+  if (!user) throw new SignedOutError();
   return requireOnboarded(user);
 }
 
-function toResult(error: unknown, fallback: string): WritingActionResult {
-  if (error instanceof SignedOutError) return { ok: false, error: SIGNED_OUT };
-  if (error instanceof OnboardingIncompleteError) return { ok: false, error: NOT_SET_UP };
+function toResult(error: unknown, fallback: AppErrorCode): WritingActionResult {
+  if (error instanceof SignedOutError) return { ok: false, code: "AUTH_EXPIRED" };
+  if (error instanceof OnboardingIncompleteError) {
+    return { ok: false, code: "ONBOARDING_REQUIRED" };
+  }
   console.error("[writing]", error);
-  return { ok: false, error: fallback };
+  return { ok: false, code: fallback };
 }
 
 /**
@@ -64,12 +69,12 @@ export async function submitWritingAction(input: {
     const user = await requireUser();
 
     if (!isWritingType(input.type)) {
-      return { ok: false, error: "Choose what kind of writing this is.", field: "type" };
+      return { ok: false, code: "WRITING_TYPE_REQUIRED", field: "type" };
     }
 
     const validated = validateWritingText(input.text, user.primaryLanguage.code);
     if (!validated.ok) {
-      return { ok: false, error: validated.message, field: validated.field };
+      return { ok: false, code: validated.code, field: validated.field };
     }
 
     // Saved first, always. Everything after this line can fail safely.
@@ -84,7 +89,7 @@ export async function submitWritingAction(input: {
 
     await runReview({ entry, user });
   } catch (error) {
-    return toResult(error, "Could not save your writing. Try again.");
+    return toResult(error, "WRITING_SAVE_FAILED");
   }
 
   revalidatePath(`/practice/writing/${entryId}`);
@@ -106,12 +111,12 @@ export async function retryReviewAction(entryId: string): Promise<WritingActionR
 
     const detail = await getWritingEntry(entryId, user.id);
     // Not found and not yours are the same answer, on purpose.
-    if (!detail) return { ok: false, error: NOT_FOUND };
+    if (!detail) return { ok: false, code: "WRITING_NOT_FOUND" };
 
     const outcome = await runReview({ entry: detail.entry, user });
-    if (!outcome.ok) return { ok: false, error: reviewFailureMessage(outcome.reason) };
+    if (!outcome.ok) return { ok: false, failure: reviewFailureKey(outcome.reason) };
   } catch (error) {
-    return toResult(error, "Could not review your writing. Try again.");
+    return toResult(error, "WRITING_REVIEW_FAILED");
   }
 
   revalidatePath(`/practice/writing/${entryId}`);
@@ -127,7 +132,7 @@ export async function saveRewriteAction(input: {
     const user = await requireUser();
 
     const validated = validateWritingText(input.text, user.primaryLanguage.code);
-    if (!validated.ok) return { ok: false, error: validated.message, field: validated.field };
+    if (!validated.ok) return { ok: false, code: validated.code, field: validated.field };
 
     const saved = await saveRewrite({
       entryId: input.entryId,
@@ -135,9 +140,9 @@ export async function saveRewriteAction(input: {
       revisedText: validated.value.text,
     });
 
-    if (!saved) return { ok: false, error: NOT_FOUND };
+    if (!saved) return { ok: false, code: "WRITING_NOT_FOUND" };
   } catch (error) {
-    return toResult(error, "Could not save your rewrite. Try again.");
+    return toResult(error, "REWRITE_SAVE_FAILED");
   }
 
   revalidatePath(`/practice/writing/${input.entryId}`);

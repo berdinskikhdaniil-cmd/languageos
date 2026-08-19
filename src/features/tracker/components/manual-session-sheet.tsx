@@ -4,8 +4,9 @@ import { useState, useTransition, type FormEvent } from "react";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { FieldError } from "@/components/ui/field-error";
 import { cn } from "@/lib/cn";
+import { useMessages } from "@/lib/i18n/locale-context";
 import { addManualSessionAction, type ActionResult } from "../actions";
-import { ACTIVITY_LABELS, ACTIVITY_TYPES, type ActivityType } from "../domain/activity";
+import { ACTIVITY_TYPES, type ActivityType } from "../domain/activity";
 
 type ManualSessionSheetProps = {
   open: boolean;
@@ -23,6 +24,7 @@ const FIELD_CLASS =
 const DEFAULTS = { activityType: "video" as ActivityType, hours: "0", minutes: "20" };
 
 export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSessionSheetProps) {
+  const messages = useMessages();
   const [failure, setFailure] = useState<Extract<ActionResult, { ok: false }> | null>(null);
   const [activityType, setActivityType] = useState<ActivityType>(DEFAULTS.activityType);
   const [hours, setHours] = useState(DEFAULTS.hours);
@@ -55,8 +57,9 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
     });
   };
 
-  const errorFor = (field: string) => (failure?.field === field ? failure.error : null);
-  const generalError = failure && !failure.field ? failure.error : null;
+  const errorFor = (field: string) =>
+    failure?.field === field ? messages.errors[failure.code] : null;
+  const generalError = failure && !failure.field ? messages.errors[failure.code] : null;
 
   const applyPreset = (preset: number) => {
     setHours(String(Math.floor(preset / 60)));
@@ -64,12 +67,12 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
   };
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Add a session">
+    <BottomSheet open={open} onClose={onClose} title={messages.tracker.manualSheetTitle}>
       <form onSubmit={onSubmit} className="flex flex-col gap-6">
         <input type="hidden" name="activityType" value={activityType} />
 
         <div>
-          <p className="text-[0.8125rem] font-medium text-muted">Activity</p>
+          <p className="text-[0.8125rem] font-medium text-muted">{messages.tracker.activity}</p>
           <div className="mt-2.5 grid grid-cols-3 gap-2">
             {ACTIVITY_TYPES.map((type) => {
               const selected = type === activityType;
@@ -80,13 +83,15 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
                   aria-pressed={selected}
                   onClick={() => setActivityType(type)}
                   className={cn(
-                    "h-11 rounded-[var(--radius-control)] text-[0.8125rem] font-semibold transition-colors",
+                    // Three to a row at 360px, so a long Russian word wraps
+                    // inside its own button instead of widening the grid.
+                    "flex h-11 items-center justify-center rounded-[var(--radius-control)] px-1.5 text-center text-[0.8125rem] font-semibold leading-tight transition-colors",
                     selected
                       ? "bg-accent text-accent-ink"
                       : "bg-surface-raised text-muted active:bg-hairline",
                   )}
                 >
-                  {ACTIVITY_LABELS[type]}
+                  {messages.tracker.activityTypes[type]}
                 </button>
               );
             })}
@@ -95,7 +100,7 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
         </div>
 
         <div>
-          <p className="text-[0.8125rem] font-medium text-muted">How long</p>
+          <p className="text-[0.8125rem] font-medium text-muted">{messages.tracker.howLong}</p>
 
           <div className="mt-2.5 flex flex-wrap gap-2">
             {DURATION_PRESETS.map((preset) => (
@@ -105,7 +110,7 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
                 onClick={() => applyPreset(preset)}
                 className="h-9 rounded-full bg-surface-raised px-3.5 text-[0.8125rem] font-medium text-muted transition-colors active:bg-hairline"
               >
-                {preset}m
+                {messages.tracker.durationPreset(preset)}
               </button>
             ))}
           </div>
@@ -118,10 +123,10 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
                 onChange={(event) => setHours(event.target.value)}
                 inputMode="numeric"
                 pattern="[0-9]*"
-                aria-label="Hours"
+                aria-label={messages.tracker.hoursField}
                 className={FIELD_CLASS}
               />
-              <span className="text-[0.875rem] text-muted">h</span>
+              <span className="text-[0.875rem] text-muted">{messages.units.hourSuffix}</span>
             </label>
             <label className="flex flex-1 items-center gap-2">
               <input
@@ -130,10 +135,10 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
                 onChange={(event) => setMinutes(event.target.value)}
                 inputMode="numeric"
                 pattern="[0-9]*"
-                aria-label="Minutes"
+                aria-label={messages.tracker.minutesField}
                 className={FIELD_CLASS}
               />
-              <span className="text-[0.875rem] text-muted">m</span>
+              <span className="text-[0.875rem] text-muted">{messages.units.minuteSuffix}</span>
             </label>
           </div>
           <FieldError message={errorFor("duration")} />
@@ -141,7 +146,7 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
 
         <div>
           <label htmlFor="manual-date" className="text-[0.8125rem] font-medium text-muted">
-            Day
+            {messages.tracker.day}
           </label>
           <input
             id="manual-date"
@@ -156,20 +161,20 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
 
         <div className="flex flex-col gap-3">
           <label htmlFor="manual-source" className="text-[0.8125rem] font-medium text-muted">
-            What was it? <span className="text-faint">Optional</span>
+            {messages.tracker.whatWasIt} <span className="text-faint">{messages.common.optional}</span>
           </label>
           <input
             id="manual-source"
             name="sourceTitle"
             maxLength={200}
-            placeholder="Podcast name, book, channel…"
+            placeholder={messages.tracker.sourcePlaceholder}
             className={FIELD_CLASS}
           />
           <input
             name="note"
             maxLength={500}
-            placeholder="A note to your future self"
-            aria-label="Note"
+            placeholder={messages.tracker.notePlaceholder}
+            aria-label={messages.tracker.noteField}
             className={FIELD_CLASS}
           />
         </div>
@@ -180,7 +185,7 @@ export function ManualSessionSheet({ open, onClose, todayDayKey }: ManualSession
             disabled={pending}
             className="h-14 w-full rounded-[var(--radius-control)] bg-accent text-[0.9375rem] font-bold text-accent-ink transition-colors active:bg-accent-pressed disabled:opacity-60"
           >
-            {pending ? "Saving…" : "Save session"}
+            {pending ? messages.common.saving : messages.tracker.saveSession}
           </button>
           <FieldError message={generalError} />
         </div>

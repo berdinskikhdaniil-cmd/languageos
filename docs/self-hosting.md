@@ -185,9 +185,12 @@ Never commit real values. `.env` is gitignored, and `.env.example` is the templa
 
 ## Known limitations
 
-- Onboarding runs once and cannot be revisited: there is no way to change your
-  language, timezone or daily goal afterwards, and no way to study a second language.
-- Writing has no history screen yet: entries are stored, but nothing lists them.
+- Onboarding runs once and cannot be revisited: there is no way to change the language
+  you are learning, your timezone or your daily goal afterwards, and no way to study a
+  second language. Settings holds the interface language and nothing else.
+- Writing has no history screen yet: Practice shows the last three pieces you wrote,
+  and there is no full catalogue, paging or search behind them.
+- The interface is available in English and Russian only.
 - AI cost is bounded only by a text-length cap and a per-user daily count. There is
   no billing and no quota, so set your own spending limit at OpenRouter.
 - There is no logout, and no session rotation.

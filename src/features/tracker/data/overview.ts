@@ -1,6 +1,6 @@
 import type { OnboardedUser } from "@/lib/auth/current-user";
 import { addLocalDays, elapsedSeconds, localDayInterval, localDayKey, localWeekInterval } from "@/lib/time";
-import { ACTIVITY_LABELS, BREAKDOWN_GROUPS, GROUP_LABELS, type ActivityGroup, type ActivityType } from "../domain/activity";
+import { BREAKDOWN_GROUPS, type ActivityGroup, type ActivityType } from "../domain/activity";
 import { buildWeekDays, groupTotals, type DayTotal, weekOverWeekChange } from "../domain/aggregate";
 import { getActiveSession, getSessionsInInterval } from "./sessions";
 
@@ -8,12 +8,17 @@ import { getActiveSession, getSessionsInInterval } from "./sessions";
  * The tracker's view of the dashboard. Everything in here comes from the
  * database — no fixtures. Demo analytics live separately in
  * features/dashboard/demo-analytics.ts and are never merged into this object.
+ *
+ * The view model carries identifiers and numbers, not sentences: an activity is
+ * `video` here and becomes "Video" or "Видео" in the component that draws it.
+ * The one exception is the weekday names on the chart, which are produced by
+ * `Intl` from the learner's zone and language together and have nowhere else to
+ * be computed.
  */
 
 export type ActiveSessionView = {
   id: string;
   activityType: ActivityType;
-  activityLabel: string;
   /** Milliseconds since the epoch, so the client can keep counting. */
   startedAtMs: number;
   /** Elapsed at the moment the server rendered, used as the client's baseline. */
@@ -22,7 +27,7 @@ export type ActiveSessionView = {
 
 export type TodayView = {
   seconds: number;
-  breakdown: { group: ActivityGroup; label: string; seconds: number }[];
+  breakdown: { group: ActivityGroup; seconds: number }[];
 };
 
 export type WeekView = {
@@ -52,7 +57,7 @@ export async function getTrackerOverview(
   user: OnboardedUser,
   now = new Date(),
 ): Promise<TrackerOverview> {
-  const { timeZone } = user;
+  const { timeZone, uiLanguage } = user;
 
   const day = localDayInterval(now, timeZone);
   const week = localWeekInterval(now, timeZone);
@@ -77,7 +82,6 @@ export async function getTrackerOverview(
       ? {
           id: active.id,
           activityType: active.activityType,
-          activityLabel: ACTIVITY_LABELS[active.activityType],
           startedAtMs: active.startedAt.getTime(),
           elapsedSeconds: elapsedSeconds(active.startedAt, now),
         }
@@ -86,7 +90,6 @@ export async function getTrackerOverview(
       seconds: todayTotals.total,
       breakdown: BREAKDOWN_GROUPS.map((group) => ({
         group,
-        label: GROUP_LABELS[group],
         seconds: todayTotals[group],
       })),
     },
@@ -101,6 +104,7 @@ export async function getTrackerOverview(
         weekStart: week.from,
         timeZone,
         now,
+        language: uiLanguage,
       }),
     },
     todayDayKey: localDayKey(now, timeZone),

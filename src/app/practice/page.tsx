@@ -4,6 +4,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { RecentWriting } from "@/features/writing/components/recent-writing";
 import { getRecentWritingEntries, type RecentWritingEntry } from "@/features/writing/data/entries";
 import { resolvePageAccess } from "@/lib/auth/page-access";
+import { getMessages } from "@/lib/i18n/messages";
 
 export const metadata: Metadata = { title: "Practice" };
 
@@ -14,6 +15,9 @@ export default async function PracticePage() {
   const access = await resolvePageAccess();
   if (access.status === "onboarding-required") redirect("/onboarding");
   if (access.status === "signed-out") return null;
+
+  const language = access.status === "ready" ? access.user.uiLanguage : undefined;
+  const messages = getMessages(language);
 
   /**
    * Both ids come from the server's own user context. The list is scoped to the
@@ -39,37 +43,44 @@ export default async function PracticePage() {
   return (
     <div className="flex flex-col gap-8 pt-3">
       <header>
-        <h1 className="text-[1.75rem] font-bold leading-tight tracking-[-0.03em]">Practice</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight tracking-[-0.03em]">
+          {messages.practice.title}
+        </h1>
         <p className="mt-2.5 max-w-[24rem] text-[0.9375rem] leading-[1.5] text-muted">
-          Use the language, not just consume it.
+          {messages.practice.intro}
         </p>
       </header>
 
       <section>
-        <h2 className="text-[1.0625rem] font-bold tracking-[-0.02em]">Writing</h2>
+        <h2 className="text-[1.0625rem] font-bold tracking-[-0.02em]">
+          {messages.practice.writingHeading}
+        </h2>
         <p className="mt-1.5 max-w-[24rem] text-[0.9375rem] leading-[1.5] text-muted">
-          Write something, and get it back with the mistakes marked, explained and corrected.
+          {messages.practice.writingIntro}
         </p>
         <Link
           href="/practice/writing"
-          className="mt-4 flex h-14 w-full items-center justify-center rounded-[var(--radius-control)] bg-accent text-[0.9375rem] font-bold text-accent-ink transition-colors active:bg-accent-pressed"
+          className="mt-4 flex h-14 w-full items-center justify-center rounded-[var(--radius-control)] bg-accent px-4 text-center text-[0.9375rem] font-bold leading-tight text-accent-ink transition-colors active:bg-accent-pressed"
         >
-          Start writing
+          {messages.practice.startWriting}
         </Link>
 
         {access.status === "ready" ? (
           <RecentWriting
             entries={recent}
             timeZone={access.user.timeZone}
+            language={access.user.uiLanguage}
             now={new Date()}
           />
         ) : null}
       </section>
 
       <section>
-        <h2 className="text-[1.0625rem] font-bold tracking-[-0.02em] text-muted">Speaking</h2>
+        <h2 className="text-[1.0625rem] font-bold tracking-[-0.02em] text-muted">
+          {messages.practice.speakingHeading}
+        </h2>
         <p className="mt-1.5 max-w-[24rem] text-[0.9375rem] leading-[1.5] text-faint">
-          Speaking practice is coming next.
+          {messages.practice.speakingSoon}
         </p>
       </section>
     </div>

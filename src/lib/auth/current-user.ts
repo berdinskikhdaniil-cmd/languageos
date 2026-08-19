@@ -71,6 +71,7 @@ function toCurrentUser(user: UserRow, language: PrimaryLanguage | null): Current
     firstName: user.firstName,
     lastName: user.lastName,
     timeZone: user.timezone,
+    uiLanguage: user.uiLanguage,
     primaryLanguage: language,
     onboardingCompletedAt: user.onboardingCompletedAt,
   };

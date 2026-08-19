@@ -4,6 +4,10 @@
  * The database stores the concrete activity. The dashboard shows three buckets.
  * Every mapping between the two goes through this file — never re-derive it in
  * a component or a query.
+ *
+ * The values here are identifiers and stay identifiers: `video`, never "Video"
+ * and never "Видео". What a reader sees is a separate question, answered by
+ * `tracker.activityTypes` and `tracker.activityGroups` in lib/i18n/messages.
  */
 
 export const ACTIVITY_TYPES = [
@@ -33,25 +37,8 @@ const GROUP_BY_TYPE: Record<ActivityType, ActivityGroup> = {
   other: "other",
 };
 
-export const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  video: "Video",
-  podcast: "Podcast",
-  reading: "Reading",
-  conversation: "Conversation",
-  writing: "Writing",
-  speaking: "Speaking",
-  other: "Other",
-};
-
 /** The three buckets the dashboard breaks Today down into, in display order. */
 export const BREAKDOWN_GROUPS = ["input", "speaking", "writing"] as const;
-
-export const GROUP_LABELS: Record<ActivityGroup, string> = {
-  input: "Input",
-  speaking: "Speaking",
-  writing: "Writing",
-  other: "Other",
-};
 
 export function activityGroup(type: ActivityType): ActivityGroup {
   return GROUP_BY_TYPE[type];

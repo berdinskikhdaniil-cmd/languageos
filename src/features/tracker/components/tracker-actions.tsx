@@ -3,6 +3,7 @@
 import { Mic, PenLine, Play, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { useMessages } from "@/lib/i18n/locale-context";
 import type { ActiveSessionView } from "../data/overview";
 import { ActiveSessionPanel } from "./active-session-panel";
 import { ManualSessionSheet } from "./manual-session-sheet";
@@ -22,11 +23,12 @@ const TILE_CLASS =
  * time can still be logged by hand while a timer runs.
  */
 export function TrackerActions({ activeSession, todayDayKey }: TrackerActionsProps) {
+  const messages = useMessages();
   const [sheet, setSheet] = useState<"start" | "manual" | null>(null);
   const closeSheet = () => setSheet(null);
 
   return (
-    <section aria-label="Tracker" className="flex flex-col gap-2">
+    <section aria-label={messages.tracker.region} className="flex flex-col gap-2">
       {activeSession ? (
         <ActiveSessionPanel session={activeSession} />
       ) : (
@@ -36,22 +38,28 @@ export function TrackerActions({ activeSession, todayDayKey }: TrackerActionsPro
           className="flex h-14 items-center justify-center gap-2 rounded-[var(--radius-control)] bg-accent text-[0.9375rem] font-bold tracking-[-0.01em] text-accent-ink transition-colors active:bg-accent-pressed"
         >
           <Play size={15} strokeWidth={1} fill="currentColor" aria-hidden />
-          Start session
+          {messages.tracker.startSession}
         </button>
       )}
 
       <div className="grid grid-cols-3 gap-2">
         <Link href="/practice" className={TILE_CLASS}>
           <Mic size={18} strokeWidth={1.8} aria-hidden />
-          <span className="text-[0.75rem] font-medium leading-none">Speaking</span>
+          <span className="max-w-full truncate px-1 text-[0.75rem] font-medium leading-none">
+            {messages.tracker.speakingTile}
+          </span>
         </Link>
         <Link href="/practice/writing" className={TILE_CLASS}>
           <PenLine size={18} strokeWidth={1.8} aria-hidden />
-          <span className="text-[0.75rem] font-medium leading-none">Write</span>
+          <span className="max-w-full truncate px-1 text-[0.75rem] font-medium leading-none">
+            {messages.tracker.writeTile}
+          </span>
         </Link>
         <button type="button" onClick={() => setSheet("manual")} className={TILE_CLASS}>
           <Plus size={18} strokeWidth={1.8} aria-hidden />
-          <span className="text-[0.75rem] font-medium leading-none">Add manually</span>
+          <span className="max-w-full truncate px-1 text-[0.75rem] font-medium leading-none">
+            {messages.tracker.addManuallyTile}
+          </span>
         </button>
       </div>
 

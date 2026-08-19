@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
+import { useMessages } from "@/lib/i18n/locale-context";
 import {
   formatTimeInZone,
   formatTimeZoneLabel,
@@ -39,6 +40,7 @@ export function TimezoneStep({
   onContinue: () => void;
   onBack: () => void;
 }) {
+  const messages = useMessages();
   const [picking, setPicking] = useState(detected === null);
   const [query, setQuery] = useState("");
 
@@ -69,12 +71,12 @@ export function TimezoneStep({
       <OnboardingStep
         step={step}
         totalSteps={totalSteps}
-        title="Where are you?"
-        description="Pick the city closest to you. Daylight saving is handled for you."
+        title={messages.onboarding.pickZoneTitle}
+        description={messages.onboarding.pickZoneDescription}
         onBack={onBack}
         footer={
           <PrimaryAction onClick={onContinue} disabled={value === null}>
-            Continue
+            {messages.common.continue}
           </PrimaryAction>
         }
       >
@@ -82,15 +84,15 @@ export function TimezoneStep({
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search cities and regions"
-          aria-label="Search timezones"
+          placeholder={messages.onboarding.searchTimeZones}
+          aria-label={messages.onboarding.searchTimeZonesLabel}
           autoComplete="off"
           className="h-12 w-full rounded-[var(--radius-control)] bg-surface px-4 text-[0.9375rem] text-fg placeholder:text-faint"
         />
 
         {results.length === 0 ? (
           <p className="mt-6 text-[0.9375rem] leading-[1.5] text-muted">
-            No zone matches that. Try a nearby capital.
+            {messages.onboarding.noZoneMatch}
           </p>
         ) : (
           <ul className="mt-3">
@@ -137,7 +139,7 @@ export function TimezoneStep({
 
         {zones.length > results.length && query.trim() === "" ? (
           <p className="mt-4 text-[0.8125rem] leading-snug text-faint">
-            Start typing to search all {zones.length} zones.
+            {messages.onboarding.searchAllZones(zones.length)}
           </p>
         ) : null}
       </OnboardingStep>
@@ -148,20 +150,22 @@ export function TimezoneStep({
     <OnboardingStep
       step={step}
       totalSteps={totalSteps}
-      title="Your timezone"
-      description="We use this to calculate your days, weeks and streaks correctly."
+      title={messages.onboarding.timezoneTitle}
+      description={messages.onboarding.timezoneDescription}
       onBack={onBack}
       footer={
         <PrimaryAction onClick={onContinue} disabled={value === null}>
-          {unchanged ? "Looks right" : "Continue"}
+          {unchanged ? messages.onboarding.looksRight : messages.common.continue}
         </PrimaryAction>
       }
     >
       <p className="text-[1.5rem] font-bold leading-tight tracking-[-0.025em]">
-        {value ? formatTimeZoneLabel(value) : "Unknown"}
+        {value ? formatTimeZoneLabel(value) : messages.onboarding.unknownZone}
       </p>
       <p className="mt-2 text-[0.9375rem] text-muted">
-        {localTime ? `It is ${localTime} there right now.` : "We could not read the local time."}
+        {localTime
+          ? messages.onboarding.localTimeNow(localTime)
+          : messages.onboarding.localTimeUnknown}
       </p>
 
       <button
@@ -172,7 +176,7 @@ export function TimezoneStep({
         }}
         className="mt-6 h-12 rounded-[var(--radius-control)] bg-surface px-5 text-[0.9375rem] font-semibold text-fg transition-colors active:bg-surface-raised"
       >
-        Change
+        {messages.common.change}
       </button>
     </OnboardingStep>
   );

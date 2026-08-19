@@ -3,6 +3,8 @@ import { MetricChange } from "@/components/ui/metric-change";
 import type { WeekView } from "@/features/tracker/data/overview";
 import { cn } from "@/lib/cn";
 import { formatSeconds } from "@/lib/format";
+import { DEFAULT_UI_LANGUAGE, type UiLanguage } from "@/lib/i18n/locale";
+import type { Messages } from "@/lib/i18n/messages";
 
 const CHART_HEIGHT = "6.75rem";
 
@@ -15,7 +17,15 @@ const CHART_HEIGHT = "6.75rem";
  * Real tracker data. When there is nothing to compare against, it says so
  * rather than inventing a percentage.
  */
-export function WeekActivityCard({ week }: { week: WeekView }) {
+export function WeekActivityCard({
+  week,
+  messages,
+  language = DEFAULT_UI_LANGUAGE,
+}: {
+  week: WeekView;
+  messages: Messages;
+  language?: UiLanguage;
+}) {
   const { days, dailyGoalMinutes } = week;
   const goalSeconds = dailyGoalMinutes * 60;
 
@@ -31,23 +41,26 @@ export function WeekActivityCard({ week }: { week: WeekView }) {
 
   return (
     <Card>
-      <p className="text-[0.8125rem] font-medium text-muted">This week</p>
+      <p className="text-[0.8125rem] font-medium text-muted">{messages.dashboard.thisWeek}</p>
 
       <p className="mt-2 text-[3.25rem] font-bold leading-none tracking-[-0.04em]">
-        {formatSeconds(week.seconds)}
+        {formatSeconds(week.seconds, language)}
       </p>
 
       {week.changePercent === null ? (
         <p className="mt-2.5 text-[0.875rem] leading-snug text-muted">
           {week.seconds === 0
-            ? "Nothing logged this week yet."
-            : "No time logged last week to compare with."}
+            ? messages.dashboard.nothingThisWeek
+            : messages.dashboard.noPreviousWeek}
         </p>
       ) : (
         <MetricChange
           percent={week.changePercent}
           improved={week.changePercent >= 0}
-          context={`from last week’s ${formatSeconds(week.previousSeconds)}`}
+          context={messages.dashboard.fromLastWeek(
+            formatSeconds(week.previousSeconds, language),
+          )}
+          language={language}
           className="mt-2.5"
         />
       )}
@@ -58,8 +71,12 @@ export function WeekActivityCard({ week }: { week: WeekView }) {
           className="pointer-events-none absolute inset-x-0 border-t border-dashed border-hairline"
           style={{ bottom: `${(goalSeconds / scale) * 100}%` }}
         >
-          <span className="absolute -top-2.5 right-0 bg-surface pl-2 text-[0.6875rem] leading-none text-faint">
-            {dailyGoalMinutes}m goal
+          {/*
+            Sits at the right edge of the chart with the surface behind it, so a
+            longer Russian phrase covers the dashed rule rather than the bars.
+          */}
+          <span className="absolute -top-2.5 right-0 max-w-full truncate bg-surface pl-2 text-[0.6875rem] leading-none text-faint">
+            {messages.dashboard.goalMarker(dailyGoalMinutes)}
           </span>
         </div>
 
@@ -99,11 +116,15 @@ export function WeekActivityCard({ week }: { week: WeekView }) {
       </div>
 
       <p className="sr-only">
-        {formatSeconds(week.seconds)} this week. Daily goal {dailyGoalMinutes} minutes.{" "}
-        {loggedDays
-          .map((day) => `${day.name} ${Math.round(day.seconds / 60)} minutes`)
-          .join(", ")}
-        .
+        {messages.dashboard.weekSummary(
+          formatSeconds(week.seconds, language),
+          dailyGoalMinutes,
+          loggedDays
+            .map((day) =>
+              messages.dashboard.daySummary(day.name, Math.round(day.seconds / 60)),
+            )
+            .join(", "),
+        )}
       </p>
     </Card>
   );

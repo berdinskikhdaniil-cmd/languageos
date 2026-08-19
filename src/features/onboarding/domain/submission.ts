@@ -1,4 +1,5 @@
 import { isDailyGoalMinutes } from "@/features/tracker/domain/goals";
+import type { AppErrorCode } from "@/lib/errors";
 import { findSupportedLanguage } from "./languages";
 import { normaliseTimeZone } from "./timezone";
 
@@ -28,25 +29,25 @@ export type OnboardingField = "language" | "timezone" | "goal";
 
 export type OnboardingSubmissionResult =
   | { ok: true; value: OnboardingSubmission }
-  | { ok: false; field: OnboardingField; message: string };
+  | { ok: false; field: OnboardingField; code: AppErrorCode };
 
 export function validateOnboardingSubmission(
   raw: OnboardingSubmissionRaw,
 ): OnboardingSubmissionResult {
   const language = findSupportedLanguage(raw.languageCode);
   if (!language) {
-    return { ok: false, field: "language", message: "Choose the language you are learning." };
+    return { ok: false, field: "language", code: "LANGUAGE_REQUIRED" };
   }
 
   const timeZone = normaliseTimeZone(raw.timeZone);
   if (!timeZone) {
-    return { ok: false, field: "timezone", message: "Choose your timezone." };
+    return { ok: false, field: "timezone", code: "TIMEZONE_REQUIRED" };
   }
 
   // A number, not a numeric string: this comes from our own buttons, and
   // anything else is a caller that should be told plainly rather than coerced.
   if (!isDailyGoalMinutes(raw.dailyGoalMinutes)) {
-    return { ok: false, field: "goal", message: "Choose a daily goal." };
+    return { ok: false, field: "goal", code: "GOAL_REQUIRED" };
   }
 
   return {

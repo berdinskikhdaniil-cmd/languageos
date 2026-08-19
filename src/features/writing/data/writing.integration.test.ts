@@ -34,6 +34,7 @@ function asUser(account: TestAccount, firstName: string): OnboardedUser {
     id: account.id,
     firstName,
     lastName: null,
+    uiLanguage: "en",
     timeZone: "Europe/Amsterdam",
     primaryLanguage: {
       id: account.languageId,

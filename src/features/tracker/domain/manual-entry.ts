@@ -1,3 +1,4 @@
+import type { AppErrorCode } from "@/lib/errors";
 import { elapsedSeconds, localDayKey, localNoonFromDayKey } from "@/lib/time";
 import { type ActivityType, isActivityType } from "./activity";
 
@@ -5,8 +6,11 @@ import { type ActivityType, isActivityType } from "./activity";
  * Validation and timestamp derivation for a manually logged session.
  *
  * Pure: it takes the raw strings a form produces plus the user's timezone and
- * the current instant, and returns either a ready-to-insert record or a message
- * to show next to the offending field.
+ * the current instant, and returns either a ready-to-insert record or the code
+ * for what is wrong, next to the field it is wrong in.
+ *
+ * A code and not a sentence. This function has no idea which language the
+ * person filling the form reads, and the sheet that shows the answer does.
  */
 
 export const MAX_MANUAL_DURATION_SECONDS = 24 * 60 * 60;
@@ -33,7 +37,7 @@ export type ManualEntryField = "activityType" | "duration" | "date";
 
 export type ManualEntryResult =
   | { ok: true; value: ManualEntry }
-  | { ok: false; field: ManualEntryField; message: string };
+  | { ok: false; field: ManualEntryField; code: AppErrorCode };
 
 function parseCount(value: string | null): number | null {
   if (value === null || value.trim() === "") return 0;
@@ -80,34 +84,34 @@ export function validateManualEntry(
   { timeZone, now }: { timeZone: string; now: Date },
 ): ManualEntryResult {
   if (!isActivityType(raw.activityType)) {
-    return { ok: false, field: "activityType", message: "Choose what you were doing." };
+    return { ok: false, field: "activityType", code: "ACTIVITY_REQUIRED" };
   }
 
   const hours = parseCount(raw.hours);
   const minutes = parseCount(raw.minutes);
   if (hours === null || minutes === null) {
-    return { ok: false, field: "duration", message: "Enter whole hours and minutes." };
+    return { ok: false, field: "duration", code: "DURATION_NOT_WHOLE" };
   }
 
   const durationSeconds = hours * 3600 + minutes * 60;
   if (durationSeconds <= 0) {
-    return { ok: false, field: "duration", message: "Enter how long it lasted." };
+    return { ok: false, field: "duration", code: "DURATION_REQUIRED" };
   }
   if (durationSeconds > MAX_MANUAL_DURATION_SECONDS) {
-    return { ok: false, field: "duration", message: "That is longer than a day." };
+    return { ok: false, field: "duration", code: "DURATION_TOO_LONG" };
   }
 
   const date = raw.date?.trim() ?? "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return { ok: false, field: "date", message: "Pick a date." };
+    return { ok: false, field: "date", code: "DATE_REQUIRED" };
   }
   if (date > localDayKey(now, timeZone)) {
-    return { ok: false, field: "date", message: "That day has not happened yet." };
+    return { ok: false, field: "date", code: "DATE_IN_FUTURE" };
   }
 
   const window = resolveManualWindow({ date, durationSeconds, timeZone, now });
   if (!window) {
-    return { ok: false, field: "date", message: "Pick a date." };
+    return { ok: false, field: "date", code: "DATE_REQUIRED" };
   }
 
   return {

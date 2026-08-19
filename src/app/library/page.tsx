@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { PlaceholderScreen } from "@/components/layout/placeholder-screen";
 import { resolvePageAccess } from "@/lib/auth/page-access";
+import { getMessages } from "@/lib/i18n/messages";
 
 export const metadata: Metadata = { title: "Library" };
 
@@ -16,10 +17,14 @@ export default async function LibraryPage() {
   if (access.status === "onboarding-required") redirect("/onboarding");
   if (access.status === "signed-out") return null;
 
+  const { placeholders } = getMessages(
+    access.status === "ready" ? access.user.uiLanguage : undefined,
+  );
+
   return (
     <PlaceholderScreen
-      title="Library"
-      description="Everything you have watched, read and listened to, plus the words and phrases you saved from it."
+      title={placeholders.library.title}
+      description={placeholders.library.description}
     />
   );
 }

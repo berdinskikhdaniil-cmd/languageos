@@ -107,12 +107,15 @@ describe("issues that could be placed in the text", () => {
     expect(review.spans.map((span) => span.severity)).toEqual(["error", "style"]);
   });
 
-  it("carry a spoken label, so a screen reader says more than the phrase", () => {
+  it("carry what the mark is about, as data rather than as a sentence", () => {
+    // The phrase a screen reader hears is composed in the component, in the
+    // reader's own language; the view model must not bake an English one in.
     const view = build([issueRow({ originalFragment: "I go", ...at("I go") })]);
     const review = view.review;
     if (review?.status !== "completed") throw new Error("expected a completed review");
 
-    expect(review.spans[0].label).toBe("Grammar, past tense");
+    expect(review.spans[0].category).toBe("grammar");
+    expect(review.spans[0].label).toBe("past tense");
   });
 
   it("are never repeated below the text", () => {

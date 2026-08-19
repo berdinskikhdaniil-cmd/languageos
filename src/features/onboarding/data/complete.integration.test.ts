@@ -44,7 +44,7 @@ function submission(overrides: Record<string, unknown> = {}) {
     dailyGoalMinutes: 30,
     ...overrides,
   });
-  if (!result.ok) throw new Error(`Fixture is not a valid submission: ${result.message}`);
+  if (!result.ok) throw new Error(`Fixture is not a valid submission: ${result.code}`);
   return result.value;
 }
 
@@ -239,6 +239,7 @@ describe("the tracker's view of an account that is not set up", () => {
         id: user.id,
         firstName: user.firstName,
         lastName: user.lastName,
+        uiLanguage: user.uiLanguage,
         timeZone: user.timezone,
         primaryLanguage: null,
         onboardingCompletedAt: user.onboardingCompletedAt,
@@ -261,6 +262,7 @@ describe("the tracker's view of an account that is not set up", () => {
       id: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
+      uiLanguage: user.uiLanguage,
       timeZone: "Europe/Amsterdam",
       primaryLanguage: language,
       onboardingCompletedAt: new Date(),
@@ -297,6 +299,7 @@ describe("an account set up before onboarding existed", () => {
       id: account.id,
       firstName: row.firstName,
       lastName: row.lastName,
+      uiLanguage: row.uiLanguage,
       timeZone: row.timezone,
       primaryLanguage: language,
       onboardingCompletedAt: row.onboardingCompletedAt,

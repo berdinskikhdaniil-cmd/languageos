@@ -4,10 +4,11 @@ import { ProgressPreview } from "@/features/dashboard/components/progress-previe
 import { TodayBreakdown } from "@/features/dashboard/components/today-breakdown";
 import { TrackerUnavailable } from "@/features/dashboard/components/tracker-unavailable";
 import { WeekActivityCard } from "@/features/dashboard/components/week-activity-card";
-import { DEMO_ACCURACY_TREND, DEMO_COACH_INSIGHT } from "@/features/dashboard/demo-analytics";
+import { demoAccuracyTrend, demoCoachInsight } from "@/features/dashboard/demo-analytics";
 import { TrackerActions } from "@/features/tracker/components/tracker-actions";
 import { getTrackerOverview, type TrackerOverview } from "@/features/tracker/data/overview";
 import { resolvePageAccess } from "@/lib/auth/page-access";
+import { getMessages } from "@/lib/i18n/messages";
 
 /**
  * The tracker is per-user live data, so this screen is never prerendered. That
@@ -31,6 +32,15 @@ export default async function DashboardPage() {
   if (access.status === "onboarding-required") redirect("/onboarding");
   if (access.status === "signed-out") return null;
 
+  /**
+   * The language is read from the same access result that authorised the page,
+   * so the words and the numbers cannot come from two different accounts. With
+   * identity unreadable there is no preference to read and English is all there
+   * is — which is also the only state where nothing personal is on screen.
+   */
+  const language = access.status === "ready" ? access.user.uiLanguage : undefined;
+  const messages = getMessages(language);
+
   let overview: TrackerOverview | null = null;
 
   if (access.status === "ready") {
@@ -47,24 +57,28 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-7">
-      <h1 className="sr-only">Dashboard</h1>
+      <h1 className="sr-only">{messages.dashboard.title}</h1>
 
       {overview ? (
         <>
-          <WeekActivityCard week={overview.week} />
-          <TodayBreakdown today={overview.today} />
+          <WeekActivityCard week={overview.week} messages={messages} language={language} />
+          <TodayBreakdown today={overview.today} messages={messages} language={language} />
           <TrackerActions
             activeSession={overview.activeSession}
             todayDayKey={overview.todayDayKey}
           />
         </>
       ) : (
-        <TrackerUnavailable />
+        <TrackerUnavailable messages={messages} />
       )}
 
       {/* Still illustrative — see features/dashboard/demo-analytics.ts. */}
-      <CoachCard insight={DEMO_COACH_INSIGHT} />
-      <ProgressPreview trend={DEMO_ACCURACY_TREND} />
+      <CoachCard insight={demoCoachInsight(messages)} />
+      <ProgressPreview
+        trend={demoAccuracyTrend(messages)}
+        messages={messages}
+        language={language}
+      />
     </div>
   );
 }

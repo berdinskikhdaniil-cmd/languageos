@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { X } from "lucide-react";
+import { useMessages } from "@/lib/i18n/locale-context";
 import { IssueDetail, type DisplayIssue } from "./issue-detail";
 
 /**
@@ -25,6 +26,8 @@ export function IssueDetailPanel({
   issue: DisplayIssue | null;
   onClose: () => void;
 }) {
+  const messages = useMessages();
+
   useEffect(() => {
     if (!issue) return;
 
@@ -39,7 +42,7 @@ export function IssueDetailPanel({
 
   return (
     <section
-      aria-label="Correction"
+      aria-label={messages.writing.correctionRegion}
       // Announced when the content swaps to a different phrase.
       aria-live="polite"
       className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[var(--app-width)] animate-sheet-in rounded-t-[24px] bg-surface-raised px-5 pb-[calc(var(--safe-bottom)+1.25rem)] pt-4 shadow-[0_-12px_32px_rgba(0,0,0,0.45)]"
@@ -51,7 +54,7 @@ export function IssueDetailPanel({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close correction"
+          aria-label={messages.writing.closeCorrection}
           className="-mr-1 -mt-1 grid size-9 shrink-0 place-items-center rounded-full text-faint transition-colors active:bg-hairline active:text-fg"
         >
           <X size={18} strokeWidth={1.8} aria-hidden />

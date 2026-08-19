@@ -5,6 +5,7 @@ import { getWritingEntry } from "@/features/writing/data/entries";
 import { buildEntryView } from "@/features/writing/domain/review-view";
 import { isAiConfigured } from "@/lib/ai/config";
 import { resolvePageAccess } from "@/lib/auth/page-access";
+import { getMessages } from "@/lib/i18n/messages";
 
 export const metadata: Metadata = { title: "Writing" };
 
@@ -25,13 +26,14 @@ export default async function WritingEntryPage({ params }: PageProps<"/practice/
   if (access.status === "onboarding-required") redirect("/onboarding");
   if (access.status === "signed-out") return null;
   if (access.status === "unavailable") {
+    const messages = getMessages();
     return (
       <section className="rounded-[var(--radius-card)] bg-surface p-5">
         <p className="text-[1.0625rem] font-semibold leading-snug">
-          Your writing is not reachable right now.
+          {messages.writing.entryUnavailableTitle}
         </p>
         <p className="mt-2 text-[0.9375rem] leading-[1.5] text-muted">
-          The database is not responding. Nothing has been lost — reload in a moment.
+          {messages.writing.entryUnavailableBody}
         </p>
       </section>
     );
