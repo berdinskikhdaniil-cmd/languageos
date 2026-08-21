@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { mistakePracticeItems, mistakePracticeSessions } from "@/db/schema";
 import type { MistakePracticeItemRow, MistakePracticeSessionRow } from "@/db/schema";
@@ -25,8 +25,20 @@ import { toStoredTarget } from "../domain/target";
  * cost nothing, without a queue, a scheduler or a second service.
  */
 
-/** A claim older than this is assumed abandoned: the function that held it died. */
+/** A grading claim older than this is assumed abandoned: its request died. */
 const STALE_CLAIM_MS = 3 * 60 * 1000;
+
+/**
+ * How long a generation claim is trusted before somebody else may take it on.
+ *
+ * Comfortably longer than the provider timeout — a request that is going to
+ * answer has answered by then, so a claim older than this is held by nobody.
+ * Deliberately much shorter than the grading lease above: a learner watching a
+ * "building your exercises" screen is watching it *now*, and leaving them in
+ * front of a claim nobody holds for three minutes would be the same freeze this
+ * whole change exists to remove.
+ */
+const STALE_GENERATION_MS = 75 * 1000;
 
 /** Postgres's unique violation. Two callers reached the same partial index. */
 const UNIQUE_VIOLATION = "23505";
@@ -37,24 +49,28 @@ export type PracticeSessionDetail = {
   items: MistakePracticeItemRow[];
 };
 
-export type GenerationClaim =
-  /** This caller owns the generation and must finish or fail it. */
-  | { status: "claimed"; session: MistakePracticeSessionRow }
-  /** Another request is generating for this target right now. */
-  | { status: "processing"; session: MistakePracticeSessionRow };
+export type OpenedSession = {
+  session: MistakePracticeSessionRow;
+  /** False when this tap joined a session that already existed for the target. */
+  created: boolean;
+};
 
 /**
- * Starts a session, or hands back the one already being generated.
+ * Opens a session for a target, or hands back the one already open for it.
+ *
+ * No provider call happens here, and that is the point of the whole iteration.
+ * The tap creates a row and returns an id, the learner lands on a screen, and
+ * the screen asks for the exercises. Fifteen seconds of waiting is the same
+ * fifteen seconds either way; the difference is whether it is spent looking at
+ * a button that has not moved.
  *
  * The partial unique index on (user_id, target_type, target_key) where the
- * status is `generating` is the whole of the idempotency story: two taps race
- * to insert, one wins and calls the provider, the loser finds the session under
- * way and opens it. Nothing is spent twice.
- *
- * A stale claim is taken over rather than left in the way. A serverless function
- * that died mid-call would otherwise lock this target out of practice for good.
+ * status is `generating` is still what makes a double tap harmless: two taps
+ * race to insert, one wins, and the loser is handed the same session rather
+ * than a second one. Which of them ends up paying for the provider call is
+ * decided separately, by `claimGenerationWork`.
  */
-export async function startGeneration({
+export async function openGenerationSession({
   userId,
   userLanguageId,
   target,
@@ -66,7 +82,7 @@ export async function startGeneration({
   target: MistakeSelection;
   model: string;
   now?: Date;
-}): Promise<GenerationClaim> {
+}): Promise<OpenedSession> {
   const stored = toStoredTarget(target);
 
   const [inserted] = await db
@@ -94,7 +110,7 @@ export async function startGeneration({
     })
     .returning();
 
-  if (inserted) return { status: "claimed", session: inserted };
+  if (inserted) return { session: inserted, created: true };
 
   const [existing] = await db
     .select()
@@ -112,36 +128,32 @@ export async function startGeneration({
   if (!existing) {
     // The row moved on between the insert and the read. Trying once more is
     // correct and terminates: the second attempt sees a free index or a live row.
-    return startGeneration({ userId, userLanguageId, target, model, now });
+    return openGenerationSession({ userId, userLanguageId, target, model, now });
   }
 
-  const [retaken] = await db
-    .update(mistakePracticeSessions)
-    .set({ model, failureReason: null, updatedAt: now })
-    .where(
-      and(
-        eq(mistakePracticeSessions.id, existing.id),
-        eq(mistakePracticeSessions.status, "generating"),
-        lt(mistakePracticeSessions.updatedAt, new Date(now.getTime() - STALE_CLAIM_MS)),
-      ),
-    )
-    .returning();
-
-  return retaken ? { status: "claimed", session: retaken } : { status: "processing", session: existing };
+  return { session: existing, created: false };
 }
 
+export type WorkClaim =
+  /** This caller owns the provider call and must finish or fail it. */
+  | { status: "claimed"; session: MistakePracticeSessionRow }
+  /** Somebody else is mid-call for this session right now. */
+  | { status: "in_flight"; session: MistakePracticeSessionRow }
+  /** The session is not owed a set: it is ready, graded, or failed. */
+  | { status: "settled"; session: MistakePracticeSessionRow }
+  /** Not this user's session, or no such session. */
+  | { status: "unavailable" };
+
 /**
- * Asks for a failed session's exercises again, in place.
+ * Takes on the provider call for a session, or explains who has it.
  *
- * The same row, deliberately: a retry must never leave a second session behind,
- * and the learner is looking at a URL that has to keep working. The status we
- * read is the lock, so two taps produce one generation.
- *
- * The unique index can still refuse this, when another session for the same
- * target is mid-generation. That is not an error — it is the answer "somebody
- * is already doing this", and it is reported as such.
+ * The conditional update *is* the lock. Two screens open on the same session
+ * both try; the first stamps `generation_claimed_at` and no longer matches for
+ * the second, which is told to wait and poll. A claim older than the lease is
+ * held by a request that is gone, and taking it over is what stops a learner
+ * being marooned in front of a set nobody is building.
  */
-export async function reclaimGeneration({
+export async function claimGenerationWork({
   sessionId,
   userId,
   model,
@@ -151,7 +163,71 @@ export async function reclaimGeneration({
   userId: string;
   model: string;
   now?: Date;
-}): Promise<GenerationClaim | null> {
+}): Promise<WorkClaim> {
+  const [claimed] = await db
+    .update(mistakePracticeSessions)
+    .set({ generationClaimedAt: now, model, failureReason: null, updatedAt: now })
+    .where(
+      and(
+        eq(mistakePracticeSessions.id, sessionId),
+        eq(mistakePracticeSessions.userId, userId),
+        eq(mistakePracticeSessions.status, "generating"),
+        or(
+          isNull(mistakePracticeSessions.generationClaimedAt),
+          lt(
+            mistakePracticeSessions.generationClaimedAt,
+            new Date(now.getTime() - STALE_GENERATION_MS),
+          ),
+        ),
+      ),
+    )
+    .returning();
+
+  if (claimed) return { status: "claimed", session: claimed };
+
+  const [existing] = await db
+    .select()
+    .from(mistakePracticeSessions)
+    .where(
+      and(eq(mistakePracticeSessions.id, sessionId), eq(mistakePracticeSessions.userId, userId)),
+    )
+    .limit(1);
+
+  if (!existing) return { status: "unavailable" };
+  return existing.status === "generating"
+    ? { status: "in_flight", session: existing }
+    : { status: "settled", session: existing };
+}
+
+/**
+ * Puts a failed session back in the queue for a fresh attempt, in place.
+ *
+ * The same row, deliberately: a retry must never leave a second session behind,
+ * and the learner is looking at a URL that has to keep working. The status we
+ * read is the lock, so two taps reopen it once.
+ *
+ * It only moves the row back to `generating` with no work claim on it — the
+ * provider call itself is taken on afterwards, by whoever is looking at the
+ * screen, exactly as a first attempt is. One path, not two.
+ *
+ * The partial unique index can still refuse this, when another session for the
+ * same target is already waiting for a set. That is not an error; it is the
+ * answer "there is already one of these", and it is reported as such.
+ */
+export type ReopenResult =
+  | { status: "reopened"; session: MistakePracticeSessionRow }
+  /** Nothing to reopen: it is already waiting, ready or graded. */
+  | { status: "unchanged"; session: MistakePracticeSessionRow };
+
+export async function reopenGeneration({
+  sessionId,
+  userId,
+  now = new Date(),
+}: {
+  sessionId: string;
+  userId: string;
+  now?: Date;
+}): Promise<ReopenResult | null> {
   const [session] = await db
     .select()
     .from(mistakePracticeSessions)
@@ -161,33 +237,29 @@ export async function reclaimGeneration({
     .limit(1);
 
   if (!session) return null;
-  if (session.status === "ready" || session.status === "completed") {
-    return { status: "processing", session };
-  }
-
-  const stale = new Date(now.getTime() - STALE_CLAIM_MS);
+  if (session.status !== "failed") return { status: "unchanged", session };
 
   try {
-    const [retaken] = await db
+    const [reopened] = await db
       .update(mistakePracticeSessions)
-      .set({ status: "generating", model, failureReason: null, updatedAt: now })
+      .set({
+        status: "generating",
+        generationClaimedAt: null,
+        failureReason: null,
+        updatedAt: now,
+      })
       .where(
         and(
           eq(mistakePracticeSessions.id, session.id),
-          or(
-            eq(mistakePracticeSessions.status, "failed"),
-            and(
-              eq(mistakePracticeSessions.status, "generating"),
-              lt(mistakePracticeSessions.updatedAt, stale),
-            ),
-          ),
+          eq(mistakePracticeSessions.status, "failed"),
         ),
       )
       .returning();
 
-    return retaken ? { status: "claimed", session: retaken } : { status: "processing", session };
+    return reopened ? { status: "reopened", session: reopened } : { status: "unchanged", session };
   } catch (error) {
-    if (isUniqueViolation(error)) return { status: "processing", session };
+    // Another session for this target is already waiting for a set.
+    if (isUniqueViolation(error)) return { status: "unchanged", session };
     throw error;
   }
 }
@@ -234,6 +306,7 @@ export async function persistExercises({
       .set({
         status: "ready",
         model,
+        generationClaimedAt: null,
         generationInputTokens: usage.inputTokens,
         generationOutputTokens: usage.outputTokens,
         failureReason: null,
@@ -261,7 +334,14 @@ export async function failGeneration({
 }): Promise<void> {
   await db
     .update(mistakePracticeSessions)
-    .set({ status: "failed", failureReason: reason, updatedAt: now })
+    .set({
+      status: "failed",
+      // Releasing the claim with the failure keeps the two facts together: no
+      // request is in flight, and there is nothing to wait for.
+      generationClaimedAt: null,
+      failureReason: reason,
+      updatedAt: now,
+    })
     .where(eq(mistakePracticeSessions.id, sessionId));
 }
 
@@ -475,42 +555,58 @@ export async function failGrading({
     .where(eq(mistakePracticeSessions.id, sessionId));
 }
 
-export type ResumablePractice = {
+export type OpenPractice = {
   sessionId: string;
   targetType: MistakePracticeSessionRow["targetType"];
   targetKey: string;
-  /** How many of the five already have an answer saved. */
+  /** `generating`, `ready` or `failed` — the three a learner can act on. */
+  status: MistakePracticeSessionRow["status"];
+  /** How many of the five already have an answer saved. Zero while building. */
   answered: number;
 };
 
 /**
- * The set somebody walked away from, if there is one.
+ * The set the learner has open, if there is one.
  *
  * A Mini App gets closed mid-exercise all the time — a message arrives, the
- * phone locks — and without this the work would simply be gone from view, sitting
- * in a table nothing links to. Only a set with at least one answer counts: a
- * session generated and never touched is not something anybody remembers
- * starting, and offering to "continue" it would be confusing.
+ * phone locks — and without this the work would simply be gone from view,
+ * sitting in a table nothing links to. Three states qualify, because all three
+ * are things somebody would want to get back to: one still being built, one part
+ * answered, and one whose build failed and can be retried.
+ *
+ * A `ready` set nobody has touched is deliberately excluded. Nobody remembers
+ * starting it, and offering to "continue" it would be confusing. A `generating`
+ * one is included even with nothing answered, because it is the state a learner
+ * most needs a way back into: they tapped, they left, and the app should still
+ * know what it owes them.
  *
  * Scoped twice over, exactly like recent writing and recent speaking: to the
  * account, and to the language currently being studied.
  */
-export async function getResumablePractice({
+export async function getOpenPractice({
   userId,
   userLanguageId,
 }: {
   userId: string;
   userLanguageId: string;
-}): Promise<ResumablePractice | null> {
+}): Promise<OpenPractice | null> {
+  const answered = sql<number>`count(${mistakePracticeItems.id})::int`;
+
   const [row] = await db
     .select({
       sessionId: mistakePracticeSessions.id,
       targetType: mistakePracticeSessions.targetType,
       targetKey: mistakePracticeSessions.targetKey,
-      answered: sql<number>`count(${mistakePracticeItems.id})::int`,
+      status: mistakePracticeSessions.status,
+      answered,
     })
     .from(mistakePracticeSessions)
-    .innerJoin(
+    /**
+     * A left join, so a session with no items yet — one still being built —
+     * still comes back. The inner join this used to be is exactly what would
+     * have hidden it.
+     */
+    .leftJoin(
       mistakePracticeItems,
       and(
         eq(mistakePracticeItems.sessionId, mistakePracticeSessions.id),
@@ -521,22 +617,36 @@ export async function getResumablePractice({
       and(
         eq(mistakePracticeSessions.userId, userId),
         eq(mistakePracticeSessions.userLanguageId, userLanguageId),
-        eq(mistakePracticeSessions.status, "ready"),
+        inArray(mistakePracticeSessions.status, ["generating", "ready", "failed"]),
       ),
     )
     .groupBy(
       mistakePracticeSessions.id,
       mistakePracticeSessions.targetType,
       mistakePracticeSessions.targetKey,
+      mistakePracticeSessions.status,
       mistakePracticeSessions.createdAt,
     )
+    // A ready set with nothing in it is not something anybody left half-done.
+    .having(sql`${mistakePracticeSessions.status} <> 'ready' or ${answered} > 0`)
     .orderBy(desc(mistakePracticeSessions.createdAt))
     .limit(1);
 
   return row ?? null;
 }
 
-/** Only used by tests, to age a claim without waiting three minutes. */
+/** Only used by tests, to age a generation claim without waiting the lease out. */
+export async function ageGenerationClaimForTesting(
+  sessionId: string,
+  claimedAt: Date,
+): Promise<void> {
+  await db
+    .update(mistakePracticeSessions)
+    .set({ generationClaimedAt: claimedAt })
+    .where(eq(mistakePracticeSessions.id, sessionId));
+}
+
+/** Only used by tests, to age a grading claim without waiting three minutes. */
 export async function agePracticeSessionForTesting(
   sessionId: string,
   updatedAt: Date,

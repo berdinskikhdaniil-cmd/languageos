@@ -562,9 +562,22 @@ const en = {
     step: (current: number, total: number) => `${current} of ${total}`,
     stepRegion: "Progress through this set",
 
-    preparing: "Building your exercises…",
-    preparingNote: "This takes a few seconds. Keep the app open.",
-    checking: "Checking your answers…",
+    /**
+     * The two waits, worded as the same kind of moment.
+     *
+     * Neither promises a duration it cannot keep. "A few seconds" is what the
+     * measurements actually support; the second counter beside it is what makes
+     * a longer one honest rather than a broken promise.
+     */
+    preparing: "Building your practice",
+    preparingBody: "Writing five new exercises from the mistakes you actually made.",
+    preparingElapsed: (seconds: number) =>
+      `Building for ${pluralize("en", seconds, { one: "second", other: "seconds" })}…`,
+    checking: "Checking your answers",
+    checkingBody: "Comparing what you wrote against what each exercise asked for.",
+    checkingElapsed: (seconds: number) =>
+      `Checking for ${pluralize("en", seconds, { one: "second", other: "seconds" })}…`,
+    usuallySeconds: "This usually takes a few seconds. Keep the app open.",
 
     fillTheGap: "Complete the sentence.",
     answerLabel: (position: number) => `Your answer to exercise ${position}`,
@@ -598,6 +611,14 @@ const en = {
     practiceAgain: "Another 5 exercises",
     backToPractice: "Back to practice",
 
+    /**
+     * Said on the failure screen whichever failure it was. A learner who has
+     * just been told something did not work wants to know what it cost them,
+     * and the answer is always nothing: no mistake was consumed, no history was
+     * touched, and the button is right there.
+     */
+    nothingLost: "Nothing has been lost. Try again.",
+
     notFoundTitle: "That practice set could not be found.",
     notFoundBody: "It may have been started on another account. Start a new one from Practice.",
 
@@ -616,7 +637,7 @@ const en = {
       timeout: "That took too long. Try again.",
       unavailable: "Practice is unavailable on this installation right now.",
       answerAll: "Answer every exercise first.",
-      generationFailed: "The exercises could not be prepared. Try again.",
+      generationFailed: "The exercises could not be prepared.",
       gradingFailed: "Your answers are saved, but we could not check them yet.",
     } satisfies Record<PracticeFailureKey, string>,
   },
@@ -1189,9 +1210,25 @@ const ru: Messages = {
     step: (current: number, total: number) => `${current} из ${total}`,
     stepRegion: "Ход тренировки",
 
-    preparing: "Готовим задания…",
-    preparingNote: "Это займёт несколько секунд. Не закрывайте приложение.",
-    checking: "Проверяем ответы…",
+    preparing: "Готовим тренировку",
+    preparingBody: "Создаём 5 новых заданий по вашим реальным ошибкам.",
+    preparingElapsed: (seconds: number) =>
+      `Готовим уже ${pluralize("ru", seconds, {
+        one: "секунду",
+        few: "секунды",
+        many: "секунд",
+        other: "секунд",
+      })}…`,
+    checking: "Проверяем ответы",
+    checkingBody: "Сравниваем ваши ответы с тем, что просило каждое задание.",
+    checkingElapsed: (seconds: number) =>
+      `Проверяем уже ${pluralize("ru", seconds, {
+        one: "секунду",
+        few: "секунды",
+        many: "секунд",
+        other: "секунд",
+      })}…`,
+    usuallySeconds: "Обычно это занимает несколько секунд. Не закрывайте приложение.",
 
     fillTheGap: "Дополните предложение.",
     answerLabel: (position: number) => `Ваш ответ на задание ${position}`,
@@ -1230,6 +1267,8 @@ const ru: Messages = {
     practiceAgain: "Ещё 5 заданий",
     backToPractice: "К практике",
 
+    nothingLost: "Ваши данные сохранены. Попробуйте ещё раз.",
+
     notFoundTitle: "Эта тренировка не найдена.",
     notFoundBody: "Возможно, она была начата в другом аккаунте. Начните новую в разделе «Практика».",
 
@@ -1242,7 +1281,7 @@ const ru: Messages = {
       timeout: "Это заняло слишком много времени. Попробуйте ещё раз.",
       unavailable: "Тренировки в этой установке сейчас недоступны.",
       answerAll: "Ответьте на все задания.",
-      generationFailed: "Не удалось подготовить задания. Попробуйте ещё раз.",
+      generationFailed: "Не удалось подготовить задания.",
       gradingFailed: "Ответы сохранены, но пока не удалось их проверить.",
     } satisfies Record<PracticeFailureKey, string>,
   },

@@ -48,6 +48,13 @@ export function PracticeFailed({
       <p className="text-[1.0625rem] font-semibold leading-snug">
         {messages.mistakePractice.failures[failure]}
       </p>
+      {/*
+        Whatever went wrong, nothing of the learner's was spent on it. Saying so
+        is the difference between a setback and a loss.
+      */}
+      <p className="mt-2 max-w-[22rem] text-[0.9375rem] leading-[1.5] text-muted">
+        {messages.mistakePractice.nothingLost}
+      </p>
 
       <button
         type="button"
@@ -55,7 +62,7 @@ export function PracticeFailed({
         disabled={pending}
         className="mt-6 h-14 w-full rounded-[var(--radius-control)] bg-accent px-4 text-[0.9375rem] font-bold leading-tight text-accent-ink transition-colors active:bg-accent-pressed disabled:opacity-60"
       >
-        {pending ? messages.mistakePractice.preparing : messages.common.tryAgain}
+        {pending ? messages.common.working : messages.common.tryAgain}
       </button>
 
       <Link

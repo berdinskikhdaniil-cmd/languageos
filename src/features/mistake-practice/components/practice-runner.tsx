@@ -9,6 +9,7 @@ import type { Messages, PracticeFailureKey } from "@/lib/i18n/messages";
 import { gradePracticeSessionAction, savePracticeAnswerAction } from "../actions";
 import { MAX_ANSWER_CHARS, isCompleteAnswerSet } from "../domain/answers";
 import type { PracticeExerciseView } from "../domain/session-view";
+import { PracticeWaiting } from "./practice-waiting";
 
 /**
  * Five exercises, one at a time, then one check.
@@ -99,18 +100,9 @@ export function PracticeRunner({
     setFailure("failure" in result ? result.failure : result.code);
   };
 
-  if (checking) {
-    return (
-      <div className="flex min-h-[60vh] flex-col justify-center pt-3">
-        <p className="text-[1.25rem] font-semibold leading-snug tracking-[-0.02em]">
-          {messages.mistakePractice.checking}
-        </p>
-        <p className="mt-2.5 max-w-[22rem] text-[0.9375rem] leading-[1.5] text-muted">
-          {messages.mistakePractice.preparingNote}
-        </p>
-      </div>
-    );
-  }
+  // The same screen the generation wait uses, because it is the same kind of
+  // moment: something is happening that nobody can put a percentage on.
+  if (checking) return <PracticeWaiting phase="grading" />;
 
   return (
     <div className="flex flex-col">

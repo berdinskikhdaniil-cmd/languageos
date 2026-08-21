@@ -70,7 +70,7 @@ export function WeakSpotRow({
             {title}
           </span>
           <span className="mt-1 block text-[0.875rem] leading-snug text-muted">
-            {pending ? messages.mistakePractice.preparing : detail}
+            {pending ? messages.common.working : detail}
           </span>
         </span>
 

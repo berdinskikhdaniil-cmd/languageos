@@ -73,7 +73,7 @@ export function StartPracticeButton({
         }
       >
         {pending
-          ? messages.mistakePractice.preparing
+          ? messages.common.working
           : (label ?? messages.mistakePractice.practiceThis)}
       </button>
 

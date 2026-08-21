@@ -18,18 +18,19 @@ import { createTestAccount, deleteTestAccount, type TestAccount } from "@/test/d
 import type { GeneratedExercise } from "../domain/exercise";
 import type { GradedAnswer } from "../domain/grading";
 import {
-  agePracticeSessionForTesting,
+  ageGenerationClaimForTesting,
+  claimGenerationWork,
   claimGrading,
   completeGrading,
   failGeneration,
   failGrading,
   getPracticeSession,
-  getResumablePractice,
+  getOpenPractice,
+  openGenerationSession,
   persistExercises,
   readAnswers,
-  reclaimGeneration,
+  reopenGeneration,
   saveAnswer,
-  startGeneration,
 } from "./sessions";
 import { loadWeakSpots, resolvePracticeTarget } from "./targets";
 
@@ -136,24 +137,31 @@ function verdicts(): GradedAnswer[] {
   }));
 }
 
-/** A ready session with five exercises, owned by `account`. */
-async function readySession(account: TestAccount, languageId = account.languageId) {
-  const claim = await startGeneration({
+/** A session waiting for its exercises, owned by `account`. */
+async function openSession(account: TestAccount, languageId = account.languageId) {
+  const opened = await openGenerationSession({
     userId: account.id,
     userLanguageId: languageId,
     target: PAST_TENSE,
     model: "test/model",
   });
-  expect(claim.status).toBe("claimed");
+
+  return opened;
+}
+
+/** A ready session with five exercises, owned by `account`. */
+async function readySession(account: TestAccount, languageId = account.languageId) {
+  const opened = await openSession(account, languageId);
+  expect(opened.created).toBe(true);
 
   await persistExercises({
-    sessionId: claim.session.id,
+    sessionId: opened.session.id,
     model: "test/model",
     exercises: exercises(),
     usage: { inputTokens: 100, outputTokens: 200 },
   });
 
-  return claim.session.id;
+  return opened.session.id;
 }
 
 beforeAll(async () => {
@@ -249,93 +257,26 @@ describe("weak spots on the hub", () => {
   });
 });
 
-describe("generation claims", () => {
-  it("creates exactly five items and opens the session", async () => {
-    const sessionId = await readySession(alice);
+describe("opening a session", () => {
+  it("returns an id without calling a provider, so the tap can navigate at once", async () => {
+    const opened = await openSession(alice);
 
-    const detail = await getPracticeSession(sessionId, alice.id);
-    expect(detail?.session.status).toBe("ready");
-    expect(detail?.items).toHaveLength(5);
-    expect(detail?.items.map((item) => item.position)).toEqual([1, 2, 3, 4, 5]);
-    expect(detail?.session.generationInputTokens).toBe(100);
+    expect(opened.created).toBe(true);
+    expect(opened.session.status).toBe("generating");
+    // Nothing has been claimed and nothing has been built yet.
+    expect(opened.session.generationClaimedAt).toBeNull();
+
+    const detail = await getPracticeSession(opened.session.id, alice.id);
+    expect(detail?.items).toHaveLength(0);
   });
 
-  it("refuses a second generation for the same target while one is in flight", async () => {
-    const first = await startGeneration({
-      userId: alice.id,
-      userLanguageId: alice.languageId,
-      target: PAST_TENSE,
-      model: "test/model",
-    });
-    const second = await startGeneration({
-      userId: alice.id,
-      userLanguageId: alice.languageId,
-      target: PAST_TENSE,
-      model: "test/model",
-    });
+  it("hands a second tap the same session rather than a second one", async () => {
+    const first = await openSession(alice);
+    const second = await openSession(alice);
 
-    expect(first.status).toBe("claimed");
-    expect(second.status).toBe("processing");
-    // And it hands back the very session already being built, so the second tap
-    // opens it rather than going nowhere.
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
     expect(second.session.id).toBe(first.session.id);
-  });
-
-  it("lets two accounts practise the same weak point at the same time", async () => {
-    const mine = await startGeneration({
-      userId: alice.id,
-      userLanguageId: alice.languageId,
-      target: PAST_TENSE,
-      model: "test/model",
-    });
-    const theirs = await startGeneration({
-      userId: bob.id,
-      userLanguageId: bob.languageId,
-      target: PAST_TENSE,
-      model: "test/model",
-    });
-
-    expect(mine.status).toBe("claimed");
-    expect(theirs.status).toBe("claimed");
-  });
-
-  it("takes over a claim whose request died", async () => {
-    const first = await startGeneration({
-      userId: alice.id,
-      userLanguageId: alice.languageId,
-      target: PAST_TENSE,
-      model: "test/model",
-    });
-    await agePracticeSessionForTesting(first.session.id, new Date(Date.now() - 10 * 60 * 1000));
-
-    const retaken = await startGeneration({
-      userId: alice.id,
-      userLanguageId: alice.languageId,
-      target: PAST_TENSE,
-      model: "test/model",
-    });
-
-    expect(retaken.status).toBe("claimed");
-    expect(retaken.session.id).toBe(first.session.id);
-  });
-
-  it("retries a failed session in place, never as a second one", async () => {
-    const claim = await startGeneration({
-      userId: alice.id,
-      userLanguageId: alice.languageId,
-      target: PAST_TENSE,
-      model: "test/model",
-    });
-    await failGeneration({ sessionId: claim.session.id, reason: "timeout" });
-
-    const retried = await reclaimGeneration({
-      sessionId: claim.session.id,
-      userId: alice.id,
-      model: "test/model",
-    });
-
-    expect(retried?.status).toBe("claimed");
-    expect(retried?.session.id).toBe(claim.session.id);
 
     const rows = await db
       .select()
@@ -344,12 +285,121 @@ describe("generation claims", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it("lets two accounts open the same weak point at the same time", async () => {
+    const mine = await openSession(alice);
+    const theirs = await openSession(bob);
+
+    expect(mine.created).toBe(true);
+    expect(theirs.created).toBe(true);
+  });
+
+  it("creates exactly five items and opens the session once filled", async () => {
+    const sessionId = await readySession(alice);
+
+    const detail = await getPracticeSession(sessionId, alice.id);
+    expect(detail?.session.status).toBe("ready");
+    expect(detail?.items).toHaveLength(5);
+    expect(detail?.items.map((item) => item.position)).toEqual([1, 2, 3, 4, 5]);
+    expect(detail?.session.generationInputTokens).toBe(100);
+    // The work claim is released with the result.
+    expect(detail?.session.generationClaimedAt).toBeNull();
+  });
+});
+
+describe("claiming the provider call", () => {
+  it("gives the work to one caller and tells the other to wait", async () => {
+    const { session } = await openSession(alice);
+
+    const first = await claimGenerationWork({
+      sessionId: session.id,
+      userId: alice.id,
+      model: "test/model",
+    });
+    const second = await claimGenerationWork({
+      sessionId: session.id,
+      userId: alice.id,
+      model: "test/model",
+    });
+
+    expect(first.status).toBe("claimed");
+    expect(second.status).toBe("in_flight");
+  });
+
+  it("takes over a claim whose request is gone", async () => {
+    const { session } = await openSession(alice);
+    await claimGenerationWork({ sessionId: session.id, userId: alice.id, model: "test/model" });
+    await ageGenerationClaimForTesting(session.id, new Date(Date.now() - 5 * 60 * 1000));
+
+    const retaken = await claimGenerationWork({
+      sessionId: session.id,
+      userId: alice.id,
+      model: "test/model",
+    });
+
+    expect(retaken.status).toBe("claimed");
+  });
+
+  it("reports a session that already has its exercises as settled", async () => {
+    const sessionId = await readySession(alice);
+
+    const claim = await claimGenerationWork({ sessionId, userId: alice.id, model: "test/model" });
+    expect(claim.status).toBe("settled");
+  });
+
+  it("refuses the work on somebody else's session", async () => {
+    const { session } = await openSession(alice);
+
+    expect(
+      (await claimGenerationWork({ sessionId: session.id, userId: bob.id, model: "test/model" }))
+        .status,
+    ).toBe("unavailable");
+  });
+});
+
+describe("retrying a failed generation", () => {
+  it("reopens the same row rather than creating a second session", async () => {
+    const { session } = await openSession(alice);
+    await failGeneration({ sessionId: session.id, reason: "timeout" });
+
+    const reopened = await reopenGeneration({ sessionId: session.id, userId: alice.id });
+
+    expect(reopened?.status).toBe("reopened");
+    expect(reopened?.session.id).toBe(session.id);
+    expect(reopened?.session.generationClaimedAt).toBeNull();
+    expect(reopened?.session.failureReason).toBeNull();
+
+    const rows = await db
+      .select()
+      .from(mistakePracticeSessions)
+      .where(eq(mistakePracticeSessions.userId, alice.id));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("is harmless when tapped twice", async () => {
+    const { session } = await openSession(alice);
+    await failGeneration({ sessionId: session.id, reason: "timeout" });
+
+    expect((await reopenGeneration({ sessionId: session.id, userId: alice.id }))?.status).toBe(
+      "reopened",
+    );
+    // The second tap finds it already waiting and changes nothing.
+    expect((await reopenGeneration({ sessionId: session.id, userId: alice.id }))?.status).toBe(
+      "unchanged",
+    );
+  });
+
+  it("leaves a ready session alone", async () => {
+    const sessionId = await readySession(alice);
+
+    const result = await reopenGeneration({ sessionId, userId: alice.id });
+    expect(result?.status).toBe("unchanged");
+    expect(result?.session.status).toBe("ready");
+  });
+
   it("refuses to retry somebody else's session", async () => {
     const sessionId = await readySession(alice);
 
-    expect(
-      await reclaimGeneration({ sessionId, userId: bob.id, model: "test/model" }),
-    ).toBeNull();
+    expect(await reopenGeneration({ sessionId, userId: bob.id })).toBeNull();
   });
 
   it("does not stack two sets of exercises when a retry reuses a row", async () => {
@@ -407,17 +457,45 @@ describe("answers", () => {
     expect(await readAnswers(sessionId)).toEqual(["went", "bought", null, null, null]);
   });
 
+  it("shows a set that is still being built, so a reopen finds it", async () => {
+    const { session } = await openSession(alice);
+
+    const open = await getOpenPractice({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+
+    expect(open).toMatchObject({ sessionId: session.id, status: "generating", answered: 0 });
+  });
+
+  it("shows a set whose build failed, so the retry is reachable", async () => {
+    const { session } = await openSession(alice);
+    await failGeneration({ sessionId: session.id, reason: "timeout" });
+
+    const open = await getOpenPractice({
+      userId: alice.id,
+      userLanguageId: alice.languageId,
+    });
+
+    expect(open).toMatchObject({ sessionId: session.id, status: "failed" });
+  });
+
   it("shows a partly-answered set as resumable", async () => {
     const sessionId = await readySession(alice);
     await saveAnswer({ sessionId, userId: alice.id, position: 1, answer: "went" });
     await saveAnswer({ sessionId, userId: alice.id, position: 2, answer: "bought" });
 
-    const resumable = await getResumablePractice({
+    const resumable = await getOpenPractice({
       userId: alice.id,
       userLanguageId: alice.languageId,
     });
 
-    expect(resumable).toMatchObject({ sessionId, targetType: "skill", targetKey: "past tense" });
+    expect(resumable).toMatchObject({
+      sessionId,
+      targetType: "skill",
+      targetKey: "past tense",
+      status: "ready",
+    });
     expect(resumable?.answered).toBe(2);
   });
 
@@ -425,7 +503,7 @@ describe("answers", () => {
     await readySession(alice);
 
     expect(
-      await getResumablePractice({ userId: alice.id, userLanguageId: alice.languageId }),
+      await getOpenPractice({ userId: alice.id, userLanguageId: alice.languageId }),
     ).toBeNull();
   });
 
@@ -434,10 +512,10 @@ describe("answers", () => {
     await saveAnswer({ sessionId, userId: alice.id, position: 1, answer: "went" });
 
     expect(
-      await getResumablePractice({ userId: bob.id, userLanguageId: bob.languageId }),
+      await getOpenPractice({ userId: bob.id, userLanguageId: bob.languageId }),
     ).toBeNull();
     expect(
-      await getResumablePractice({ userId: alice.id, userLanguageId: aliceGerman }),
+      await getOpenPractice({ userId: alice.id, userLanguageId: aliceGerman }),
     ).toBeNull();
   });
 });

@@ -59,7 +59,9 @@ Versions come from `package.json` — check there rather than assuming.
 Working: targeted practice on a weak point — a category or a repeated skill from the
 mistake engine becomes five short exercises generated from the learner's own real
 mistakes, answered one at a time, checked in a single pass, and reported as a count of
-accepted answers; Progress analytics — one screen over the tracker's sessions and the two
+accepted answers; the tap opens a session in a few hundred milliseconds and the screen
+that follows is what builds the set, so the wait is visible, interruptible and picked up
+again on reopen; Progress analytics — one screen over the tracker's sessions and the two
 issue tables, showing study time per period, the Input / Speaking / Writing balance,
 a twelve-week consistency grid, an errors-per-1000-words trend over reviewed
 writing, and mistakes by category and by source; a mistake engine — the issues
@@ -284,13 +286,39 @@ content — a result for an exercise that was not asked about, or two results fo
 refused whole, because a verdict shown beside the wrong answer is worse than no verdict.
 
 **One generation and one batch grading per session.** Two provider calls for a completed
-set, and never five. Both are guarded by claims the database enforces: a partial unique
-index on (user, target type, target key) while the status is `generating`, and a
-`ready → grading` conditional update. A failed generation leaves `failed` and a retry
-that reuses the same row; a failed *check* returns the row to `ready` with a reason on
-it, because the answers survived it and asking somebody to redo five exercises over one
-timeout would be indefensible. Answers are written before the check and refused after
-it.
+set, and never five. Three claims the database enforces keep it that way: a partial
+unique index on (user, target type, target key) while the status is `generating`, so a
+double tap yields one session; `generation_claimed_at`, so two screens on that session
+yield one provider call; and a `ready → grading` conditional update. A failed generation
+leaves `failed` and a retry that reuses the same row; a failed *check* returns the row to
+`ready` with a reason on it, because the answers survived it and asking somebody to redo
+five exercises over one timeout would be indefensible. Answers are written before the
+check and refused after it.
+
+**Tapping Practise never waits for the provider.** Opening a session and filling it are
+two requests, and the split is a product decision rather than a technical one: generation
+takes about eight seconds against the configured model, and the first person to use the
+feature spent that time looking at an unchanged screen and concluded the app had frozen.
+The tap now does only what is cheap — prove the weak point is real, create the row — and
+returns in a few hundred milliseconds. The screen the learner lands on is what asks for
+the exercises, and it says so while it waits. Any new AI step in this product should be
+built the same way round: navigate first, work second, and never make somebody watch a
+button.
+
+**A waiting screen never invents a number.** No percentage, no filling bar, no
+"step 2 of 3", no motivational carousel. Nothing on the server knows how far through a
+completion it is, and a bar implying otherwise would be the one figure a learner actually
+trusts. What is allowed: a sentence saying what is happening, an indeterminate sweep, and
+a count of seconds actually elapsed — that last one being the part that still works under
+`prefers-reduced-motion`, where the global rule in `globals.css` freezes the sweep.
+
+**The AI pipeline is measured, and the measurements carry no content.**
+`features/mistake-practice/data/timings.ts` logs one line per phase: session id, model,
+provider milliseconds, parse milliseconds, total, token counts and how many grounding
+examples were used. Never an exercise, an answer, a fragment of anybody's writing, a
+prompt or a response body — a log is the one place a learner's sentences would sit in
+plain text forever. Optimise from those numbers rather than from intuition: parsing is
+about two milliseconds, so anything that is not provider time is not worth chasing.
 
 **Practice does not alter the mistake engine, and does not count as study time.**
 Nothing in `features/mistake-practice` writes to `writing_issues`, `speaking_issues` or
@@ -540,6 +568,9 @@ say which you used.
 - The charts have no axis scale and no touch tooltips. The headline figures and the
   screen-reader summaries carry the numbers; reading an exact value off a bar is not
   possible.
+- A generation whose request dies leaves a claim that is only taken over once its
+  75-second lease expires; until then a reopened screen waits rather than restarting. It
+  self-heals, but it can mean up to a minute of waiting for a set nobody is building.
 - Targeted practice generates and checks; it does not model learning. No mastery
   score, no spaced repetition, no scheduling, no "you have fixed this", and no way to
   see a history of past sets — Practice surfaces the latest unfinished one and nothing
@@ -548,7 +579,13 @@ say which you used.
   so it appears in no total, no chart and no consistency day. Whether it belongs under
   `other`, under a dedicated activity, or nowhere is a methodology question nobody has
   answered yet.
-- The only guards on practice cost are the five-item cap, the two claims and the
+- Building a set takes about eight seconds of provider time and checking one about six,
+  against `anthropic/claude-sonnet-5` on the measurements taken so far. Those are the
+  numbers the waiting copy is written against; if they move a long way, the copy should
+  move with them. `anthropic/claude-haiku-4.5` was measured once as roughly a second
+  faster and followed the brevity instruction less well, which was not enough to justify
+  a second model variable.
+- The only guards on practice cost are the five-item cap, the three claims and the
   answer-length cap. There is no daily limit on how many sets one account may generate,
   where Writing has `WRITING_DAILY_REVIEW_LIMIT`.
 - "The exercises are in the language being learned" is enforced by the prompt, not by a

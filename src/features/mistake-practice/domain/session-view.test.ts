@@ -15,6 +15,7 @@ function session(overrides: Partial<MistakePracticeSessionRow> = {}): MistakePra
     targetType: "skill",
     targetKey: "past tense",
     status: "ready",
+    generationClaimedAt: null,
     model: "some/model",
     gradingModel: null,
     generationInputTokens: null,

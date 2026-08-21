@@ -70,8 +70,11 @@ infrastructure. It runs the same code as this repository.
   mistakes you actually made. They train the *skill*, in new situations: an exercise
   never repeats the sentence you got wrong. Answer all five, then the whole set is
   checked at once — an answer that differs from the reference one but is still
-  correct is marked as such rather than as a mistake. Your answers are saved as you
-  go, so a set you left half-finished is waiting on Practice. Practising does not
+  correct is marked as such rather than as a mistake. Building a set takes a few
+  seconds and you watch it happen rather than a frozen button: the screen opens
+  immediately, says what it is doing, and shows the first exercise by itself when it is
+  ready. Your answers are saved as you go, so a set you left half-finished — or one that
+  was still being built when you closed the app — is waiting on Practice. Practising does not
   change your history of mistakes: the counts on Progress mean what they meant
   before, and practice time is not yet counted as study time.
 - **Errors per 1,000 words** — a real figure and a real trend, over reviewed writing

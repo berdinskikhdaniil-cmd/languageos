@@ -3,9 +3,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { PracticeFailed } from "@/features/mistake-practice/components/practice-failed";
-import { PracticePending } from "@/features/mistake-practice/components/practice-pending";
+import { PracticeGenerating } from "@/features/mistake-practice/components/practice-generating";
 import { PracticeResult } from "@/features/mistake-practice/components/practice-result";
 import { PracticeRunner } from "@/features/mistake-practice/components/practice-runner";
+import { PracticeWaiting } from "@/features/mistake-practice/components/practice-waiting";
 import { targetTitle } from "@/features/mistake-practice/components/target-title";
 import { getPracticeSession } from "@/features/mistake-practice/data/sessions";
 import { buildSessionView } from "@/features/mistake-practice/domain/session-view";
@@ -81,9 +82,14 @@ export default async function MistakePracticePage({
         {title}
       </h1>
 
-      {view.status === "generating" || view.status === "grading" ? (
-        <PracticePending phase={view.status} />
-      ) : null}
+      {/*
+        The generating screen is not passive: it is what asks for the exercises,
+        and what watches for them arriving. Grading only waits, because the
+        request that is checking the answers is the one the learner is already
+        holding open in the runner.
+      */}
+      {view.status === "generating" ? <PracticeGenerating sessionId={view.sessionId} /> : null}
+      {view.status === "grading" ? <PracticeWaiting phase="grading" /> : null}
 
       {view.status === "failed" ? (
         <PracticeFailed sessionId={view.sessionId} failure={view.failure} />

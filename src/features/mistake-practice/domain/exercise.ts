@@ -47,7 +47,16 @@ export const BLANK_MARKER = "___";
 /** Caps that stop one bad response from filling a table. Mirrored by CHECKs. */
 const MAX_PROMPT_CHARS = 600;
 const MAX_ANSWER_CHARS = 600;
-const MAX_NOTES_CHARS = 600;
+/**
+ * Grading notes were half of everything the model wrote.
+ *
+ * Measured: a five-exercise response carried 473 characters of actual exercise
+ * and 411 characters of hidden note, and output tokens are what a learner waits
+ * for — they are produced one after another, unlike the prompt. A note is a
+ * hint to the grader, not an essay for it, so the budget is now the size of the
+ * hint. The cap is a backstop; the schema asks for twelve words.
+ */
+const MAX_NOTES_CHARS = 160;
 
 export type GeneratedExercise = {
   type: ExerciseType;
@@ -90,7 +99,7 @@ export const EXERCISE_SET_JSON_SCHEMA: Record<string, unknown> = {
           gradingNotes: {
             type: ["string", "null"],
             description:
-              "One short English note for the grader: what this exercise is actually testing and which other answers would also be right. Never shown to the learner. Null if there is nothing to add.",
+              "At most twelve words of English for the grader: what is being tested, and any other answer that should count. A hint, not an explanation — the grader can read the exercise. Never shown to the learner. Null if there is nothing worth adding.",
           },
         },
       },

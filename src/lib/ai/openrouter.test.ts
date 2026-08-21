@@ -54,12 +54,29 @@ describe("a successful completion", () => {
 
     const result = await requestStructuredCompletion(REQUEST);
 
-    expect(result).toEqual({
+    // `toMatchObject` rather than `toEqual`: the reply also carries how long
+    // the provider took, which is a measurement and not part of the contract
+    // this case is about. It has its own test below.
+    expect(result).toMatchObject({
       ok: true,
       data: { summary: "Good." },
       model: "test/model-v1",
       usage: { inputTokens: 120, outputTokens: 340 },
     });
+  });
+
+  it("reports how long the provider took", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(completion({ summary: "Good." })));
+
+    const result = await requestStructuredCompletion(REQUEST);
+
+    /**
+     * The number itself is the machine's business — what matters is that every
+     * reply carries one, because the practice screens are tuned against these
+     * timings and a phase that quietly stopped reporting would be invisible.
+     */
+    expect(result.durationMs).toBeTypeOf("number");
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
 
   it("reports absent usage as absent rather than as zero", async () => {
@@ -150,7 +167,7 @@ describe("configuration", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "");
     const result = await requestStructuredCompletion(REQUEST);
 
-    expect(result).toEqual({ ok: false, reason: "not_configured" });
+    expect(result).toMatchObject({ ok: false, reason: "not_configured" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -158,7 +175,7 @@ describe("configuration", () => {
     vi.stubEnv("OPENROUTER_MODEL", "");
     const result = await requestStructuredCompletion(REQUEST);
 
-    expect(result).toEqual({ ok: false, reason: "not_configured" });
+    expect(result).toMatchObject({ ok: false, reason: "not_configured" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -166,7 +183,10 @@ describe("configuration", () => {
 describe("failures", () => {
   it("reports a network failure", async () => {
     fetchMock.mockRejectedValue(new TypeError("fetch failed"));
-    expect(await requestStructuredCompletion(REQUEST)).toEqual({ ok: false, reason: "network" });
+    expect(await requestStructuredCompletion(REQUEST)).toMatchObject({
+      ok: false,
+      reason: "network",
+    });
   });
 
   it("reports a timeout", async () => {
@@ -174,12 +194,15 @@ describe("failures", () => {
     timeout.name = "TimeoutError";
     fetchMock.mockRejectedValue(timeout);
 
-    expect(await requestStructuredCompletion(REQUEST)).toEqual({ ok: false, reason: "timeout" });
+    expect(await requestStructuredCompletion(REQUEST)).toMatchObject({
+      ok: false,
+      reason: "timeout",
+    });
   });
 
   it("reports rate limiting separately from everything else", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: { code: 429, message: "slow down" } }, 429));
-    expect(await requestStructuredCompletion(REQUEST)).toEqual({
+    expect(await requestStructuredCompletion(REQUEST)).toMatchObject({
       ok: false,
       reason: "rate_limited",
     });
@@ -193,7 +216,7 @@ describe("failures", () => {
       ),
     );
 
-    expect(await requestStructuredCompletion(REQUEST)).toEqual({
+    expect(await requestStructuredCompletion(REQUEST)).toMatchObject({
       ok: false,
       reason: "unsupported_structured_output",
     });
@@ -201,7 +224,7 @@ describe("failures", () => {
 
   it("reports an error the provider put inside a 200 response", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: { code: 502, message: "model is down" } }));
-    expect(await requestStructuredCompletion(REQUEST)).toEqual({
+    expect(await requestStructuredCompletion(REQUEST)).toMatchObject({
       ok: false,
       reason: "provider_unavailable",
     });
@@ -212,7 +235,7 @@ describe("failures", () => {
       jsonResponse({ model: "m", choices: [{ message: { content: "Sure! Here you go:" } }] }),
     );
 
-    expect(await requestStructuredCompletion(REQUEST)).toEqual({
+    expect(await requestStructuredCompletion(REQUEST)).toMatchObject({
       ok: false,
       reason: "invalid_response",
     });
@@ -225,7 +248,7 @@ describe("failures", () => {
       { model: "m" },
     ]) {
       fetchMock.mockResolvedValue(jsonResponse(body));
-      expect(await requestStructuredCompletion(REQUEST)).toEqual({
+      expect(await requestStructuredCompletion(REQUEST)).toMatchObject({
         ok: false,
         reason: "invalid_response",
       });
@@ -234,7 +257,7 @@ describe("failures", () => {
 
   it("reports a body that is not JSON at all", async () => {
     fetchMock.mockResolvedValue(new Response("<html>502 Bad Gateway</html>", { status: 200 }));
-    expect(await requestStructuredCompletion(REQUEST)).toEqual({
+    expect(await requestStructuredCompletion(REQUEST)).toMatchObject({
       ok: false,
       reason: "invalid_response",
     });

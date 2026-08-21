@@ -747,6 +747,22 @@ export const mistakePracticeSessions = pgTable(
     /** The normalised skill label, or the category identifier. Canonical, always. */
     targetKey: text("target_key").notNull(),
     status: mistakePracticeStatusEnum("status").notNull().default("generating"),
+    /**
+     * When somebody actually took the provider call on, as opposed to when the
+     * session was created.
+     *
+     * The two used to be the same moment, because generation ran inside the
+     * server action that created the row. It no longer does: the tap creates
+     * the session and returns immediately so the learner lands on a screen
+     * rather than watching a button, and the screen is what asks for the
+     * exercises. That splits one lock into two, and this column is the second
+     * of them — `status = 'generating'` says a set is owed for this target, and
+     * this says a request is in flight for it right now.
+     *
+     * Null means nobody has started. A value older than the lease means whoever
+     * did is gone, and the work may be taken over.
+     */
+    generationClaimedAt: timestamp("generation_claimed_at", { withTimezone: true }),
     /** Whatever answered the generation call, as the provider reported it. */
     model: text("model").notNull(),
     /** And whatever answered the grading call. Null until it has run. */

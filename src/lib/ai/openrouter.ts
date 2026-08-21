@@ -48,6 +48,13 @@ export type AiUsage = {
   outputTokens: number | null;
 };
 
+/**
+ * How long the provider took, measured around the HTTP call itself.
+ *
+ * Reported on failures as well as successes, because "the timeout fired after
+ * 45 seconds" and "it refused in 200ms" are different operational problems and
+ * a log that only timed the happy path could not tell them apart.
+ */
 export type StructuredCompletion =
   | {
       ok: true;
@@ -56,8 +63,10 @@ export type StructuredCompletion =
       /** The model that actually answered, as reported by the provider. */
       model: string;
       usage: AiUsage;
+      /** Wall-clock milliseconds spent waiting on the provider. */
+      durationMs: number;
     }
-  | { ok: false; reason: AiFailureReason };
+  | { ok: false; reason: AiFailureReason; durationMs: number };
 
 export type StructuredRequest = {
   /** Trusted instructions. Never contains learner input. */
@@ -77,7 +86,8 @@ export async function requestStructuredCompletion(
   if (!configured.ok) {
     // Logged for whoever runs the deployment. The learner sees none of this.
     console.error("[ai] not configured; missing:", configured.missing.join(", "));
-    return { ok: false, reason: "not_configured" };
+    // Nothing was waited on, so there is nothing to time.
+    return { ok: false, reason: "not_configured", durationMs: 0 };
   }
 
   return send(configured.config, request);
@@ -85,6 +95,13 @@ export async function requestStructuredCompletion(
 
 async function send(config: AiConfig, request: StructuredRequest): Promise<StructuredCompletion> {
   let response: Response;
+  /**
+   * `performance.now()` rather than `Date.now()`: this is a duration, and a
+   * clock that can step backwards over an NTP correction would occasionally
+   * report a negative one.
+   */
+  const startedAt = performance.now();
+  const elapsed = () => Math.round(performance.now() - startedAt);
 
   try {
     response = await fetch(ENDPOINT, {
@@ -96,22 +113,22 @@ async function send(config: AiConfig, request: StructuredRequest): Promise<Struc
       cache: "no-store",
     });
   } catch (error) {
-    return { ok: false, reason: isTimeout(error) ? "timeout" : "network" };
+    return { ok: false, reason: isTimeout(error) ? "timeout" : "network", durationMs: elapsed() };
   }
 
   if (!response.ok) {
     const reason = classifyHttpFailure(response.status, await readErrorMessage(response));
     // Status and our own classification only — never the provider's body, which
     // can echo the prompt back.
-    console.error(`[ai] provider returned ${response.status} (${reason})`);
-    return { ok: false, reason };
+    console.error(`[ai] provider returned ${response.status} (${reason}) after ${elapsed()}ms`);
+    return { ok: false, reason, durationMs: elapsed() };
   }
 
   let payload: OpenRouterResponse;
   try {
     payload = (await response.json()) as OpenRouterResponse;
   } catch {
-    return { ok: false, reason: "invalid_response" };
+    return { ok: false, reason: "invalid_response", durationMs: elapsed() };
   }
 
   /**
@@ -121,19 +138,19 @@ async function send(config: AiConfig, request: StructuredRequest): Promise<Struc
   if (payload?.error) {
     const reason = classifyHttpFailure(payload.error.code ?? 0, payload.error.message ?? "");
     console.error("[ai] provider reported an error inside a 200 response:", reason);
-    return { ok: false, reason };
+    return { ok: false, reason, durationMs: elapsed() };
   }
 
   const content = payload?.choices?.[0]?.message?.content;
   if (typeof content !== "string" || content.trim() === "") {
-    return { ok: false, reason: "invalid_response" };
+    return { ok: false, reason: "invalid_response", durationMs: elapsed() };
   }
 
   const data = parseJson(content);
   if (data === undefined) {
     // The model answered, but not with JSON. Schema-following is best-effort at
     // some providers, so this is an expected failure, not an exception.
-    return { ok: false, reason: "invalid_response" };
+    return { ok: false, reason: "invalid_response", durationMs: elapsed() };
   }
 
   return {
@@ -141,6 +158,7 @@ async function send(config: AiConfig, request: StructuredRequest): Promise<Struc
     data,
     model: typeof payload.model === "string" ? payload.model : config.model,
     usage: readUsage(payload.usage),
+    durationMs: elapsed(),
   };
 }
 

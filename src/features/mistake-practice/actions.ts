@@ -10,8 +10,9 @@ import {
 import type { AppErrorCode } from "@/lib/errors";
 import type { PracticeFailureKey } from "@/lib/i18n/messages";
 import { runGrading } from "./data/grading-runner";
-import { retryGeneration, runGeneration } from "./data/generation-runner";
-import { getPracticeSession, saveAnswer } from "./data/sessions";
+import { generatePendingExercises, openPracticeSession } from "./data/generation-runner";
+import { getPracticeSession, reopenGeneration, saveAnswer } from "./data/sessions";
+import type { MistakePracticeSessionRow } from "@/db/schema";
 import { EXERCISE_COUNT } from "./domain/exercise";
 import { generationFailureKey, gradingFailureKey } from "./domain/failures";
 import { fromStoredTarget, practiceSessionHref } from "./domain/target";
@@ -37,6 +38,8 @@ export type PracticeActionResult =
   | { ok: false; code: AppErrorCode }
   | { ok: false; failure: PracticeFailureKey };
 
+export type PracticeSessionStatus = MistakePracticeSessionRow["status"];
+
 export type StartPracticeResult =
   | { ok: true; sessionId: string }
   | { ok: false; code: AppErrorCode }
@@ -60,15 +63,17 @@ function toResult(error: unknown, fallback: AppErrorCode): { ok: false; code: Ap
 }
 
 /**
- * Builds a set of exercises for a weak point, and says where to find it.
+ * Opens a session for a weak point and says where to find it. Nothing more.
+ *
+ * This used to build the exercises too, and took about fifteen seconds doing
+ * it — fifteen seconds in which the learner watched a button that had not
+ * changed and concluded the app was broken. It now does only the cheap half:
+ * prove the weak point is real, create the row, hand back the id. The screen at
+ * that id is what asks for the exercises.
  *
  * The target arrives as the two strings a link carries. It is parsed, then
  * checked against the learner's own reviews; a weak point they do not have
  * produces no row and no provider call.
- *
- * A session that exists is always worth opening, even when its generation
- * failed — the screen there reads the truth from the database and offers the
- * button again, which is a better place to be than back where you tapped.
  */
 export async function startMistakePracticeAction(input: {
   targetType: unknown;
@@ -83,45 +88,94 @@ export async function startMistakePracticeAction(input: {
     );
     if (!selection) return { ok: false, code: "PRACTICE_TARGET_UNKNOWN" };
 
-    const outcome = await runGeneration({ user, selection });
+    const outcome = await openPracticeSession({ user, selection });
+    if (!outcome.ok) return { ok: false, failure: generationFailureKey(outcome.reason) };
 
-    if (!outcome.ok && outcome.sessionId === null) {
-      // Nothing was created: the weak point is not theirs, or the installation
-      // has no provider. There is no screen to send them to.
-      return { ok: false, failure: generationFailureKey(outcome.reason) };
-    }
-
-    /**
-     * A session that exists is worth opening even when its generation failed.
-     * The screen reads the truth from the database and offers the button again,
-     * which is a better place to be than back where they tapped.
-     */
-    const sessionId = outcome.ok ? outcome.sessionId : (outcome.sessionId as string);
-    revalidatePath(practiceSessionHref(sessionId));
     revalidatePath("/practice");
-    return { ok: true, sessionId };
+    return { ok: true, sessionId: outcome.sessionId };
   } catch (error) {
     return toResult(error, "PRACTICE_START_FAILED");
   }
 }
 
-/** Asks for a failed session's exercises again, in the same session. */
-export async function retryPracticeGenerationAction(
+/**
+ * Asks for the exercises a session is waiting for.
+ *
+ * Called by the generating screen the moment it mounts, on a first visit and on
+ * every reopen alike. It is deliberately safe to call unconditionally: a set
+ * that already exists costs nothing, a set somebody else is mid-call on is
+ * reported as such, and only a genuinely unclaimed one is taken on. The client
+ * never has to reason about whether a provider call is already out.
+ */
+export async function generatePracticeExercisesAction(
   sessionId: string,
 ): Promise<PracticeActionResult> {
   try {
     const user = await requireUser();
 
-    const outcome = await retryGeneration({ user, sessionId });
-    // Not found and not yours are the same answer, on purpose.
-    if (!outcome) return { ok: false, code: "PRACTICE_SESSION_NOT_FOUND" };
-    if (!outcome.ok) return { ok: false, failure: generationFailureKey(outcome.reason) };
+    const outcome = await generatePendingExercises({ user, sessionId });
+    if (!outcome.ok) {
+      if (outcome.reason === "unavailable") {
+        return { ok: false, code: "PRACTICE_SESSION_NOT_FOUND" };
+      }
+      revalidatePath(practiceSessionHref(sessionId));
+      return { ok: false, failure: generationFailureKey(outcome.reason) };
+    }
   } catch (error) {
     return toResult(error, "PRACTICE_START_FAILED");
   }
 
   revalidatePath(practiceSessionHref(sessionId));
   return { ok: true };
+}
+
+/**
+ * Puts a failed session back in the queue, in the same row.
+ *
+ * It only reopens; the screen then asks for the exercises through the same
+ * action a first attempt uses. One path rather than two, so a retry cannot
+ * quietly behave differently from the thing it is retrying.
+ */
+export async function retryPracticeGenerationAction(
+  sessionId: string,
+): Promise<PracticeActionResult> {
+  try {
+    const user = await requireUser();
+
+    const outcome = await reopenGeneration({ sessionId, userId: user.id });
+    // Not found and not yours are the same answer, on purpose.
+    if (!outcome) return { ok: false, code: "PRACTICE_SESSION_NOT_FOUND" };
+  } catch (error) {
+    return toResult(error, "PRACTICE_START_FAILED");
+  }
+
+  revalidatePath(practiceSessionHref(sessionId));
+  return { ok: true };
+}
+
+/**
+ * Where a session has got to, and nothing else.
+ *
+ * The generating screen polls this while it waits, because the request that is
+ * actually building the set may not be the one the learner is looking at — they
+ * may have closed the Mini App and come back, or double-tapped and landed with
+ * the loser. One small read, so polling it every couple of seconds costs
+ * roughly nothing.
+ */
+export async function practiceSessionStatusAction(
+  sessionId: string,
+): Promise<{ status: PracticeSessionStatus } | null> {
+  try {
+    const user = await requireUser();
+
+    const detail = await getPracticeSession(sessionId, user.id);
+    return detail ? { status: detail.session.status } : null;
+  } catch (error) {
+    // A poll that could not read is not worth an error on screen; the next one
+    // will answer, and the caller treats null as "still waiting".
+    console.error("[mistake-practice] status poll failed", error);
+    return null;
+  }
 }
 
 /**

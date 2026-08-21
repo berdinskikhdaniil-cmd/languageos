@@ -131,6 +131,18 @@
 
   --animate-sheet-in: sheet-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-fade-in: fade-in 0.16s ease-out;
+  /*
+   * The one indeterminate indicator in the product: a segment sweeping a track,
+   * used while something genuinely unmeasurable is happening. Indeterminate on
+   * purpose — a bar that filled from 0 to 100 would be claiming to know how
+   * much of an AI call is done, which nothing does.
+   *
+   * Under `prefers-reduced-motion` the global rule below freezes it, leaving a
+   * short segment at the left of the track. That is why the screen it appears
+   * on also counts the seconds in words: the proof that the app is alive must
+   * not depend on movement.
+   */
+  --animate-sweep: sweep 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
 @keyframes sheet-in {
@@ -141,6 +153,15 @@
   to {
     transform: none;
     opacity: 1;
+  }
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
   }
 }
 

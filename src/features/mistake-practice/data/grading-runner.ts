@@ -6,6 +6,7 @@ import { GRADING_JSON_SCHEMA, parseGrading } from "../domain/grading";
 import { buildGradingPrompt } from "../domain/prompt";
 import { fromStoredTarget } from "../domain/target";
 import { claimGrading, completeGrading, failGrading } from "./sessions";
+import { logPhaseTiming, stopwatch } from "./timings";
 
 /**
  * One check of one set of answers, from claim to stored verdicts.
@@ -44,6 +45,8 @@ export async function runGrading({
   user: OnboardedUser;
   sessionId: string;
 }): Promise<GradingOutcome> {
+  const total = stopwatch();
+
   const configured = readAiConfig();
   if (!configured.ok) {
     console.error("[mistake-practice] grading unavailable; missing:", configured.missing.join(", "));
@@ -111,13 +114,24 @@ export async function runGrading({
 
   if (!completion.ok) {
     await failGrading({ sessionId, reason: completion.reason });
+    logPhaseTiming("grading", {
+      sessionId,
+      model: configured.config.model,
+      providerMs: completion.durationMs,
+      parseMs: 0,
+      totalMs: total(),
+      usage: { inputTokens: null, outputTokens: null },
+      failure: completion.reason,
+    });
     return { ok: false, reason: completion.reason };
   }
 
+  const parseTimer = stopwatch();
   const parsed = parseGrading(
     completion.data,
     answers.map((answer) => answer.position),
   );
+  const parseMs = parseTimer();
 
   if (!parsed.ok) {
     /**
@@ -131,6 +145,15 @@ export async function runGrading({
         ` (session ${sessionId}, model ${completion.model})`,
     );
     await failGrading({ sessionId, reason: "invalid_response" });
+    logPhaseTiming("grading", {
+      sessionId,
+      model: completion.model,
+      providerMs: completion.durationMs,
+      parseMs,
+      totalMs: total(),
+      usage: completion.usage,
+      failure: "invalid_response",
+    });
     return { ok: false, reason: "invalid_response" };
   }
 
@@ -138,6 +161,15 @@ export async function runGrading({
     sessionId,
     model: completion.model,
     results: parsed.value,
+    usage: completion.usage,
+  });
+
+  logPhaseTiming("grading", {
+    sessionId,
+    model: completion.model,
+    providerMs: completion.durationMs,
+    parseMs,
+    totalMs: total(),
     usage: completion.usage,
   });
 

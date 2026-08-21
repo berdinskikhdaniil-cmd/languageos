@@ -1,0 +1,1 @@
+ALTER TABLE "mistake_practice_sessions" ADD COLUMN "generation_claimed_at" timestamp with time zone;
